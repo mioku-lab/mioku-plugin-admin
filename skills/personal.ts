@@ -12,6 +12,12 @@ function parseProfileSex(value: string): 0 | 1 | 2 {
   return 0;
 }
 
+function logAdminSkillError(runtimeCtx: any, toolName: string, err: unknown) {
+  runtimeCtx?.ctx?.logger?.error?.(
+    `[admin skills] ${toolName} failed: ${String(err)}`,
+  );
+}
+
 const personalSkill: AISkill = {
   name: "admin_personal",
   description:
@@ -51,6 +57,7 @@ const personalSkill: AISkill = {
           await bot.api("set_qq_avatar", { file: imageUrl });
           return { success: true, message: "Bot头像已修改" };
         } catch (err) {
+          logAdminSkillError(runtimeCtx, "admin_personal.set_bot_avatar", err);
           return { error: `修改头像失败: ${err}` };
         }
       },
@@ -80,6 +87,11 @@ const personalSkill: AISkill = {
             message: `Bot昵称已修改为: ${args.nickname}`,
           };
         } catch (err) {
+          logAdminSkillError(
+            runtimeCtx,
+            "admin_personal.set_bot_nickname",
+            err,
+          );
           return { error: `修改昵称失败: ${err}` };
         }
       },
@@ -108,6 +120,11 @@ const personalSkill: AISkill = {
           await bot.api("set_qq_profile", { personal_note: personalNote });
           return { success: true, message: "Bot个性签名已修改" };
         } catch (err) {
+          logAdminSkillError(
+            runtimeCtx,
+            "admin_personal.set_bot_signature",
+            err,
+          );
           return { error: `修改个性签名失败: ${err}` };
         }
       },
@@ -157,6 +174,7 @@ const personalSkill: AISkill = {
             message: `Bot性别已修改为: ${genderMap[sex]}`,
           };
         } catch (err) {
+          logAdminSkillError(runtimeCtx, "admin_personal.set_bot_gender", err);
           return { error: `修改性别失败: ${err}` };
         }
       },
@@ -186,6 +204,11 @@ const personalSkill: AISkill = {
           ]);
           return { success: true, message: `已发送私聊消息给 ${args.user_id}` };
         } catch (err) {
+          logAdminSkillError(
+            runtimeCtx,
+            "admin_personal.send_private_message",
+            err,
+          );
           return { error: `发送私聊失败: ${err}` };
         }
       },
@@ -215,6 +238,11 @@ const personalSkill: AISkill = {
           ]);
           return { success: true, message: `已发送群消息到 ${args.group_id}` };
         } catch (err) {
+          logAdminSkillError(
+            runtimeCtx,
+            "admin_personal.send_group_message",
+            err,
+          );
           return { error: `发送群消息失败: ${err}` };
         }
       },
@@ -247,6 +275,7 @@ const personalSkill: AISkill = {
             })),
           };
         } catch (err) {
+          logAdminSkillError(runtimeCtx, "admin_personal.get_friend_list", err);
           return { error: `获取好友列表失败: ${err}` };
         }
       },
@@ -279,6 +308,7 @@ const personalSkill: AISkill = {
             })),
           };
         } catch (err) {
+          logAdminSkillError(runtimeCtx, "admin_personal.get_group_list", err);
           return { error: `获取群聊列表失败: ${err}` };
         }
       },
@@ -305,6 +335,7 @@ const personalSkill: AISkill = {
           await bot.api("delete_friend", { user_id: args.user_id });
           return { success: true, message: `已删除好友 ${args.user_id}` };
         } catch (err) {
+          logAdminSkillError(runtimeCtx, "admin_personal.delete_friend", err);
           return { error: `删除好友失败: ${err}` };
         }
       },
@@ -334,6 +365,7 @@ const personalSkill: AISkill = {
           });
           return { success: true, message: `已退出群 ${args.group_id}` };
         } catch (err) {
+          logAdminSkillError(runtimeCtx, "admin_personal.leave_group", err);
           return { error: `退群失败: ${err}` };
         }
       },

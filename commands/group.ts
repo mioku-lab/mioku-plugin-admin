@@ -7,6 +7,12 @@ import {
 } from "../config";
 import { replyAdminErrorNotice } from "./notice";
 
+function formatGroupRole(role: string): string {
+  if (role === "owner") return "群主";
+  if (role === "admin") return "管理员";
+  return "群成员";
+}
+
 export function registerGroupAdminCommands(ctx: MiokiContext) {
   ctx.handle("message", async (event: any) => {
     const text = ctx.text(event)?.trim();
@@ -44,7 +50,6 @@ export function registerGroupAdminCommands(ctx: MiokiContext) {
 
       const isMaster = ctx.isOwner?.(event) ?? false;
       const senderRole = await getMemberRole(bot, groupId, event.user_id);
-      const botRole = await getMemberRole(bot, groupId, selfId);
       const hasAdminPermission =
         isMaster || senderRole === "owner" || senderRole === "admin";
 
@@ -63,20 +68,24 @@ export function registerGroupAdminCommands(ctx: MiokiContext) {
         });
         return false;
       };
+      const ensureDangerousTargetPermission = async (
+        targetUserId: number,
+        actionName: string,
+      ) => {
+        const targetRole = await getMemberRole(bot, groupId, targetUserId);
+        if (senderRole !== targetRole) return true;
+
+        await replyAdminErrorNotice({
+          ctx,
+          event,
+          instruction: `用户想${actionName}目标成员，但操作人与被操作人群身份相同，均为${formatGroupRole(senderRole)}，群管危险操作无权操作同等级成员。请明确告诉用户无权操作同级成员。`,
+          fallbackMessage: "无权操作同级成员哦～",
+        });
+        return false;
+      };
 
       // 普通群员只能给自己设置头衔。
       if (text.startsWith("我要头衔")) {
-        if (botRole !== "owner") {
-          await replyAdminErrorNotice({
-            ctx,
-            event,
-            instruction:
-              "用户希望你给她设置一个头衔，但是你不是群主，无法做到这件事",
-            fallbackMessage: "我不是群主，没法帮你啦～",
-          });
-          return;
-        }
-
         const atUser = getAtUserId(event.message);
         if (atUser && atUser !== event.user_id) {
           await event.reply("管好自己呗～", true);
@@ -111,16 +120,6 @@ export function registerGroupAdminCommands(ctx: MiokiContext) {
       // 改头衔
       if (text.startsWith("改头衔") || text.startsWith("/改头衔")) {
         if (!(await ensureAdminPermission())) return;
-        if (botRole !== "owner") {
-          await replyAdminErrorNotice({
-            ctx,
-            event,
-            instruction:
-              "用户希望你帮助他修改头衔，但当前你不是群主，没法帮他修改头衔",
-            fallbackMessage: "我不是群主，没法帮你啦～",
-          });
-          return;
-        }
 
         const rest = text.replace(/^\/?改头衔\s*/, "").trim();
         const atUser = getAtUserId(event.message);
@@ -185,6 +184,7 @@ export function registerGroupAdminCommands(ctx: MiokiContext) {
           });
           return;
         }
+        if (!(await ensureDangerousTargetPermission(atUser, "踢出"))) return;
         try {
           await bot.api("set_group_kick", {
             group_id: groupId,
@@ -221,6 +221,7 @@ export function registerGroupAdminCommands(ctx: MiokiContext) {
           });
           return;
         }
+        if (!(await ensureDangerousTargetPermission(atUser, "禁言"))) return;
         const rest = text.replace(/^\/?禁言\s*/, "").trim();
         const durationStr = rest.replace(/@\d+\s*/, "").trim();
         const durationSec = parseDuration(durationStr) || 10 * 60;
@@ -274,16 +275,6 @@ export function registerGroupAdminCommands(ctx: MiokiContext) {
 
       if (text.startsWith("设管理") || text.startsWith("/设管理")) {
         if (!(await ensureAdminPermission())) return;
-        if (botRole !== "owner") {
-          await replyAdminErrorNotice({
-            ctx,
-            event,
-            instruction:
-              "用户想让你把他设置成群管理，但当前你不是群主，没法帮他设置管理员",
-            fallbackMessage: "我不是群主，没法帮你啦～",
-          });
-          return;
-        }
         const atUser = getAtUserId(event.message);
         if (!atUser) {
           await replyAdminErrorNotice({
