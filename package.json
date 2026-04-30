@@ -1,0 +1,130 @@
+{
+  "name": "mioku-plugin-admin",
+  "version": "1.0.0",
+  "description": "管理插件，提供事件通知与群管/个人管理指令",
+  "main": "index.ts",
+  "mioku": {
+    "services": [
+      "config",
+      "ai"
+    ],
+    "help": {
+      "title": "管理",
+      "description": "Bot管理插件，提供事件通知与管理指令",
+      "commands": [
+        {
+          "cmd": "/改头像",
+          "desc": "修改Bot头像",
+          "role": "master"
+        },
+        {
+          "cmd": "/改昵称",
+          "desc": "修改Bot昵称",
+          "role": "master"
+        },
+        {
+          "cmd": "/改签名",
+          "desc": "修改Bot个性签名",
+          "role": "master"
+        },
+        {
+          "cmd": "/改性别",
+          "desc": "修改Bot性别",
+          "role": "master"
+        },
+        {
+          "cmd": "/改群名片",
+          "desc": "修改Bot在群里的名片",
+          "role": "admin"
+        },
+        {
+          "cmd": "/改群昵称",
+          "desc": "修改群聊名称",
+          "role": "admin"
+        },
+        {
+          "cmd": "/改群头像",
+          "desc": "修改群头像",
+          "role": "admin"
+        },
+        {
+          "cmd": "/改头衔",
+          "desc": "设置群成员专属头衔",
+          "usage": "/改头衔 qq号或@人 头衔",
+          "role": "admin"
+        },
+        {
+          "cmd": "我要头衔",
+          "desc": "普通群员给自己设置专属头衔",
+          "usage": "我要头衔 头衔内容",
+          "role": "member"
+        },
+        {
+          "cmd": "/踢",
+          "desc": "踢出群成员",
+          "role": "admin"
+        },
+        {
+          "cmd": "/禁言",
+          "desc": "禁言群成员（支持分钟/小时/天）",
+          "usage": "/禁言 @人 10分钟",
+          "role": "admin"
+        },
+        {
+          "cmd": "/解禁",
+          "desc": "解除群成员禁言",
+          "role": "admin"
+        },
+        {
+          "cmd": "/设管理",
+          "desc": "设置群管理员",
+          "role": "admin"
+        },
+        {
+          "cmd": "/全体禁言",
+          "desc": "开启全体禁言",
+          "role": "admin"
+        },
+        {
+          "cmd": "/全体解禁",
+          "desc": "关闭全体禁言",
+          "role": "admin"
+        },
+        {
+          "cmd": "/删好友",
+          "desc": "删除好友",
+          "usage": "/删好友 qq号",
+          "role": "master"
+        },
+        {
+          "cmd": "/退群",
+          "desc": "退出群聊",
+          "usage": "/退群 群号",
+          "role": "master"
+        },
+        {
+          "cmd": "/发好友",
+          "desc": "给好友发送私聊消息",
+          "usage": "/发好友 qq号 内容",
+          "role": "master"
+        },
+        {
+          "cmd": "/发群聊",
+          "desc": "给群聊发送消息",
+          "usage": "/发群聊 群号 内容",
+          "role": "master"
+        },
+        {
+          "cmd": "/全部好友",
+          "desc": "获取全部好友列表",
+          "role": "master"
+        },
+        {
+          "cmd": "/全部群聊",
+          "desc": "获取全部群聊列表",
+          "role": "master"
+        }
+      ]
+    }
+  }
+}
