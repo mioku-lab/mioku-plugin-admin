@@ -43,12 +43,12 @@ export async function replyAdminErrorNotice(options: {
         instruction: instructionLines.join("\n"),
         send: true,
         promptInjections: [
-          {
-            title: "Admin Plugin Error Notice",
-            content:
-              "You are handling admin plugin validation or execution errors. If the user's command is missing a parameter, if the user tells you the missing parameter in the next step, you can directly use skills to help the user complete the required operation",
-          },
-        ],
+            {
+              title: "Admin Plugin Notice",
+              content:
+                "An admin-related action was triggered. Judge whether the user likely intended this action or triggered it accidentally. If it looks accidental or like a casual mention, weave a natural reply into the conversation without mentioning the plugin, tools, or commands. If the user seems to want this feature, respond helpfully.",
+            },
+          ],
       });
       return;
     } catch (noticeError) {
