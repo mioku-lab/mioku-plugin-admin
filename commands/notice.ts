@@ -22,6 +22,11 @@ export async function replyAdminErrorNotice(options: {
   fallbackMessage: string;
   error?: unknown;
 }): Promise<void> {
+  const text = options.ctx.text(options.event)?.trim() ?? "";
+  const hasSlashPrefix = text.startsWith("/");
+  if (!hasSlashPrefix) {
+    return;
+  }
   if (options.error != null) {
     options.ctx.logger.error(
       `[admin] ${options.instruction}\n执行错误: ${normalizeErrorMessage(options.error)}`,
