@@ -25,8 +25,12 @@ export function registerGroupAdminCommands(ctx: MiokiContext) {
       "我要头衔",
       "踢",
       "/踢",
+      "禁",
+      "/禁",
       "禁言",
       "/禁言",
+      "解",
+      "/解",
       "解禁",
       "/解禁",
       "设管理",
@@ -126,11 +130,14 @@ export function registerGroupAdminCommands(ctx: MiokiContext) {
         let targetUser: number | undefined = atUser;
         let title: string;
 
+        const isSlashCommand = text.startsWith("/");
+
         if (atUser) {
           title = rest.replace(/@\d+\s*/, "").trim();
         } else {
           const parts = rest.split(/\s+/);
           if (parts.length < 2) {
+            if (!isSlashCommand) return;
             await replyAdminErrorNotice({
               ctx,
               event,
@@ -145,6 +152,7 @@ export function registerGroupAdminCommands(ctx: MiokiContext) {
         }
 
         if (!targetUser || !title) {
+          if (!isSlashCommand) return;
           await replyAdminErrorNotice({
             ctx,
             event,
@@ -174,6 +182,11 @@ export function registerGroupAdminCommands(ctx: MiokiContext) {
       if (text.startsWith("踢") || text.startsWith("/踢")) {
         if (!(await ensureAdminPermission())) return;
         const atUser = getAtUserId(event.message);
+
+        const isSlashCommand = text.startsWith("/");
+        if (!atUser && !isSlashCommand) {
+          return;
+        }
         if (!atUser) {
           await replyAdminErrorNotice({
             ctx,
@@ -204,13 +217,23 @@ export function registerGroupAdminCommands(ctx: MiokiContext) {
       }
 
       if (
-        text.startsWith("禁言") ||
-        text.startsWith("/禁言") ||
-        text.startsWith("/禁") ||
-        text.startsWith("禁")
+        text === "禁" ||
+        text === "/禁" ||
+        text === "禁言" ||
+        text === "/禁言" ||
+        text.startsWith("禁 ") ||
+        text.startsWith("/禁 ") ||
+        text.startsWith("禁言 ") ||
+        text.startsWith("/禁言 ")
       ) {
         if (!(await ensureAdminPermission())) return;
         const atUser = getAtUserId(event.message);
+
+        // 不带 / 的命令必须有@才触发，否则静默忽略
+        const isSlashCommand = text.startsWith("/");
+        if (!atUser && !isSlashCommand) {
+          return; // 静默忽略，不走 chat runtime
+        }
         if (!atUser) {
           await replyAdminErrorNotice({
             ctx,
@@ -241,13 +264,22 @@ export function registerGroupAdminCommands(ctx: MiokiContext) {
       }
 
       if (
-        text.startsWith("解禁") ||
-        text.startsWith("/解禁") ||
-        text.startsWith("/解") ||
-        text.startsWith("解")
+        text === "解" ||
+        text === "/解" ||
+        text === "解禁" ||
+        text === "/解禁" ||
+        text.startsWith("解 ") ||
+        text.startsWith("/解 ") ||
+        text.startsWith("解禁 ") ||
+        text.startsWith("/解禁 ")
       ) {
         if (!(await ensureAdminPermission())) return;
         const atUser = getAtUserId(event.message);
+
+        const isSlashCommand = text.startsWith("/");
+        if (!atUser && !isSlashCommand) {
+          return; // 静默忽略，不走 chat runtime
+        }
         if (!atUser) {
           await replyAdminErrorNotice({
             ctx,
@@ -276,6 +308,11 @@ export function registerGroupAdminCommands(ctx: MiokiContext) {
       if (text.startsWith("设管理") || text.startsWith("/设管理")) {
         if (!(await ensureAdminPermission())) return;
         const atUser = getAtUserId(event.message);
+
+        const isSlashCommand = text.startsWith("/");
+        if (!atUser && !isSlashCommand) {
+          return;
+        }
         if (!atUser) {
           await replyAdminErrorNotice({
             ctx,
