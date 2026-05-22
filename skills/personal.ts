@@ -1,4 +1,4 @@
-import type { AISkill } from "../../../src";
+import type { AISkill } from "mioku";
 import { getImageUrlByMessageId } from "./message-image";
 
 function parseProfileSex(value: string): 0 | 1 | 2 {

@@ -1,4 +1,4 @@
-import type { AISkill } from "../../src";
+import type { AISkill } from "mioku";
 import groupAdminSkill from "./skills/group";
 import personalSkill from "./skills/personal";
 

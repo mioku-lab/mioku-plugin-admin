@@ -1,4 +1,4 @@
-import type { AIService } from "../../../src/services/ai/types";
+import type { AIService } from "mioku";
 import type { MiokiContext } from "mioki";
 
 function normalizeErrorMessage(error: unknown): string {

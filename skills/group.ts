@@ -1,4 +1,4 @@
-import type { AISkill } from "../../../src";
+import type { AISkill } from "mioku";
 import { getMemberRole } from "../config";
 import { getImageUrlByMessageId } from "./message-image";
 

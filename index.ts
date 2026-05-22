@@ -1,6 +1,6 @@
 import { definePlugin, type MiokiContext } from "mioki";
-import type { ConfigService } from "../../src/services/config/tpyes";
-import { setPluginRuntimeState, resetPluginRuntimeState } from "../../src";
+import type { ConfigService } from "mioku";
+import { setPluginRuntimeState, resetPluginRuntimeState } from "mioku";
 import { DEFAULT_CONFIG, normalizeConfig } from "./config";
 import type { AdminConfig } from "./config";
 import { registerNotificationHandlers } from "./notify";
