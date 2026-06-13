@@ -56,348 +56,283 @@ async function checkDangerousTargetPermission(
 const groupAdminSkill: AISkill = {
   name: "admin_group",
   description:
-    "群管理工具，提供踢人、禁言、解禁、设管理、全体禁言、改群名、改群头像、设头衔等群管操作",
+    "群管理统一入口。action 决定具体行为：管理成员（踢/禁言/解禁/设管理/设头衔）或管理群（全体禁言/改群名/改Bot群名片/改群头像/撤回消息）。",
   permission: "admin",
   tools: [
     {
-      name: "kick_member",
-      description: "将群成员踢出群聊",
+      name: "manage_member",
+      description:
+        "管理群成员：踢人(kick)、禁言(mute)、解除禁言(unmute)、设为管理员(set_admin)、取消管理员(unset_admin)、设置某成员头衔(set_title)、设置自己头衔(set_self_title)。",
       parameters: {
         type: "object",
         properties: {
-          user_id: { type: "number", description: "要踢出的成员QQ号" },
-        },
-        required: ["user_id"],
-      },
-      handler: async (args: any, runtimeCtx?: any) => {
-        const runtime = await resolveGroupRuntime(runtimeCtx);
-        if ("error" in runtime) return { error: runtime.error };
-        const { bot, groupId } = runtime;
-        const permissionError = await checkDangerousTargetPermission(
-          runtime,
-          args.user_id,
-        );
-        if (permissionError) {
-          logAdminSkillError(
-            runtimeCtx,
-            "admin_group.kick_member",
-            permissionError,
-          );
-          return { error: permissionError };
-        }
-        try {
-          await bot.api("set_group_kick", {
-            group_id: groupId,
-            user_id: args.user_id,
-          });
-          return {
-            success: true,
-            message: `已将 ${args.user_id} 移出当前群`,
-          };
-        } catch (err) {
-          logAdminSkillError(runtimeCtx, "admin_group.kick_member", err);
-          return { error: `踢人失败: ${err}` };
-        }
-      },
-    },
-    {
-      name: "mute_member",
-      description: "禁言群成员，不指定时长时默认10分钟",
-      parameters: {
-        type: "object",
-        properties: {
-          user_id: { type: "number", description: "要禁言的成员QQ号" },
+          action: {
+            type: "string",
+            description: "要执行的动作",
+            enum: [
+              "kick",
+              "mute",
+              "unmute",
+              "set_admin",
+              "unset_admin",
+              "set_title",
+              "set_self_title",
+            ],
+          },
+          user_id: {
+            type: "number",
+            description:
+              "目标成员QQ号。set_self_title 不需要；其他动作必填。",
+          },
           duration: {
             type: "number",
-            description: "禁言时长（秒），不提供或小于等于0时默认600秒",
+            description: "禁言时长（秒），仅 mute 生效；不提供或<=0时默认600秒",
+          },
+          title: {
+            type: "string",
+            description: "头衔内容，仅 set_title / set_self_title 需要",
           },
         },
-        required: ["user_id"],
+        required: ["action"],
       },
       handler: async (args: any, runtimeCtx?: any) => {
         const runtime = await resolveGroupRuntime(runtimeCtx);
         if ("error" in runtime) return { error: runtime.error };
-        const { bot, groupId } = runtime;
-        const duration =
-          Number(args.duration) > 0 ? Number(args.duration) : 10 * 60;
-        const permissionError = await checkDangerousTargetPermission(
-          runtime,
-          args.user_id,
-        );
-        if (permissionError) {
-          logAdminSkillError(
-            runtimeCtx,
-            "admin_group.mute_member",
-            permissionError,
-          );
-          return { error: permissionError };
-        }
+        const { bot, selfId, groupId, event } = runtime;
+        const action = String(args?.action || "");
+
         try {
-          await bot.setGroupBan(groupId, args.user_id, duration);
-          return {
-            success: true,
-            message: `已禁言 ${args.user_id} ${duration}秒`,
-          };
+          switch (action) {
+            case "kick": {
+              const userId = Number(args?.user_id);
+              if (!userId) return { error: "kick 需要提供 user_id" };
+              const permErr = await checkDangerousTargetPermission(
+                runtime,
+                userId,
+              );
+              if (permErr) return { error: permErr };
+              await bot.api("set_group_kick", {
+                group_id: groupId,
+                user_id: userId,
+              });
+              return { success: true, message: `已将 ${userId} 移出当前群` };
+            }
+            case "mute": {
+              const userId = Number(args?.user_id);
+              if (!userId) return { error: "mute 需要提供 user_id" };
+              const permErr = await checkDangerousTargetPermission(
+                runtime,
+                userId,
+              );
+              if (permErr) return { error: permErr };
+              const duration =
+                Number(args?.duration) > 0 ? Number(args.duration) : 10 * 60;
+              await bot.setGroupBan(groupId, userId, duration);
+              return {
+                success: true,
+                message: `已禁言 ${userId} ${duration}秒`,
+              };
+            }
+            case "unmute": {
+              const userId = Number(args?.user_id);
+              if (!userId) return { error: "unmute 需要提供 user_id" };
+              await bot.setGroupBan(groupId, userId, 0);
+              return { success: true, message: `已解除 ${userId} 的禁言` };
+            }
+            case "set_admin": {
+              const userId = Number(args?.user_id);
+              if (!userId) return { error: "set_admin 需要提供 user_id" };
+              await bot.api("set_group_admin", {
+                group_id: groupId,
+                user_id: userId,
+                enable: true,
+              });
+              return {
+                success: true,
+                message: `已将 ${userId} 设为当前群的管理员`,
+              };
+            }
+            case "unset_admin": {
+              const userId = Number(args?.user_id);
+              if (!userId) return { error: "unset_admin 需要提供 user_id" };
+              await bot.api("set_group_admin", {
+                group_id: groupId,
+                user_id: userId,
+                enable: false,
+              });
+              return {
+                success: true,
+                message: `已取消 ${userId} 在当前群的管理员`,
+              };
+            }
+            case "set_title": {
+              const userId = Number(args?.user_id);
+              const title = String(args?.title || "").trim();
+              if (!userId || !title) {
+                return { error: "set_title 需要提供 user_id 和 title" };
+              }
+              await (bot as any).setGroupSpecialTitle(groupId, userId, title);
+              return {
+                success: true,
+                message: `已将 ${userId} 的头衔设为 "${title}"`,
+              };
+            }
+            case "set_self_title": {
+              const userId = Number(event?.user_id);
+              if (!userId) return { error: "无法获取当前用户ID" };
+              const title = String(args?.title || "").trim();
+              if (!title) return { error: "set_self_title 需要提供 title" };
+              await (bot as any).setGroupSpecialTitle(groupId, userId, title);
+              return {
+                success: true,
+                message: `已将你的头衔设为 "${title}"`,
+              };
+            }
+            default:
+              return { error: `未知的 action: ${action}` };
+          }
         } catch (err) {
-          logAdminSkillError(runtimeCtx, "admin_group.mute_member", err);
-          return { error: `禁言失败: ${err}` };
+          logAdminSkillError(runtimeCtx, `admin_group.manage_member.${action}`, err);
+          return { error: `执行 ${action} 失败: ${err}` };
         }
       },
     },
     {
-      name: "unmute_member",
-      description: "解除群成员禁言",
+      name: "manage_group",
+      description:
+        "管理群本身或批量撤回消息：开启/关闭全体禁言(set_whole_ban/unset_whole_ban)、改群名(set_group_name)、改Bot在群里的名片(set_self_card)、改群头像(set_group_avatar)、撤回一条或多条消息(recall_messages，需要 message_ids 数组)。",
       parameters: {
         type: "object",
         properties: {
-          user_id: { type: "number", description: "要解禁的成员QQ号" },
-        },
-        required: ["user_id"],
-      },
-      handler: async (args: any, runtimeCtx?: any) => {
-        const runtime = await resolveGroupRuntime(runtimeCtx);
-        if ("error" in runtime) return { error: runtime.error };
-        const { bot, groupId } = runtime;
-        try {
-          await bot.setGroupBan(groupId, args.user_id, 0);
-          return { success: true, message: `已解除 ${args.user_id} 的禁言` };
-        } catch (err) {
-          logAdminSkillError(runtimeCtx, "admin_group.unmute_member", err);
-          return { error: `解禁失败: ${err}` };
-        }
-      },
-    },
-    {
-      name: "set_group_admin",
-      description: "设置或取消群管理员",
-      parameters: {
-        type: "object",
-        properties: {
-          user_id: { type: "number", description: "要设为管理的QQ号" },
-          enable: {
-            type: "boolean",
-            description: "true设为管理，false取消管理",
+          action: {
+            type: "string",
+            description: "要执行的动作",
+            enum: [
+              "set_whole_ban",
+              "unset_whole_ban",
+              "set_group_name",
+              "set_self_card",
+              "set_group_avatar",
+              "recall_messages",
+            ],
+          },
+          group_name: {
+            type: "string",
+            description: "新群名，仅 set_group_name 需要",
+          },
+          card: {
+            type: "string",
+            description: "新的Bot群名片，仅 set_self_card 需要",
+          },
+          message_id: {
+            type: "number",
+            description:
+              "包含图片的消息 message_id，仅 set_group_avatar 需要",
+          },
+          message_ids: {
+            type: "array",
+            items: { type: "number" },
+            description:
+              "要撤回的消息 message_id 数组，仅 recall_messages 需要。一次调用可批量撤回。",
           },
         },
-        required: ["user_id", "enable"],
-      },
-      handler: async (args: any, runtimeCtx?: any) => {
-        const runtime = await resolveGroupRuntime(runtimeCtx);
-        if ("error" in runtime) return { error: runtime.error };
-        const { bot, groupId } = runtime;
-        try {
-          await bot.api("set_group_admin", {
-            group_id: groupId,
-            user_id: args.user_id,
-            enable: args.enable,
-          });
-          return {
-            success: true,
-            message: args.enable
-              ? `已将 ${args.user_id} 设为当前群的管理员`
-              : `已取消 ${args.user_id} 在当前群的管理员`,
-          };
-        } catch (err) {
-          logAdminSkillError(runtimeCtx, "admin_group.set_group_admin", err);
-          return { error: `设管理失败: ${err}` };
-        }
-      },
-    },
-    {
-      name: "set_group_whole_ban",
-      description: "开启或关闭全体禁言",
-      parameters: {
-        type: "object",
-        properties: {
-          enable: {
-            type: "boolean",
-            description: "true开启全体禁言，false关闭",
-          },
-        },
-        required: ["enable"],
-      },
-      handler: async (args: any, runtimeCtx?: any) => {
-        const runtime = await resolveGroupRuntime(runtimeCtx);
-        if ("error" in runtime) return { error: runtime.error };
-        const { bot, groupId } = runtime;
-        try {
-          await bot.api("set_group_whole_ban", {
-            group_id: groupId,
-            enable: args.enable,
-          });
-          return {
-            success: true,
-            message: args.enable
-              ? "当前群已开启全体禁言"
-              : "当前群已关闭全体禁言",
-          };
-        } catch (err) {
-          logAdminSkillError(
-            runtimeCtx,
-            "admin_group.set_group_whole_ban",
-            err,
-          );
-          return { error: `全体禁言操作失败: ${err}` };
-        }
-      },
-    },
-    {
-      name: "set_group_name",
-      description: "修改群聊名称",
-      parameters: {
-        type: "object",
-        properties: {
-          group_name: { type: "string", description: "新群名" },
-        },
-        required: ["group_name"],
-      },
-      handler: async (args: any, runtimeCtx?: any) => {
-        const runtime = await resolveGroupRuntime(runtimeCtx);
-        if ("error" in runtime) return { error: runtime.error };
-        const { bot, groupId } = runtime;
-        try {
-          await bot.api("set_group_name", {
-            group_id: groupId,
-            group_name: args.group_name,
-          });
-          return {
-            success: true,
-            message: `当前群名称已修改为 ${args.group_name}`,
-          };
-        } catch (err) {
-          logAdminSkillError(runtimeCtx, "admin_group.set_group_name", err);
-          return { error: `修改群名失败: ${err}` };
-        }
-      },
-    },
-    {
-      name: "set_group_card",
-      description: "修改Bot在当前群内的群名片",
-      parameters: {
-        type: "object",
-        properties: {
-          card: { type: "string", description: "新的群名片" },
-        },
-        required: ["card"],
+        required: ["action"],
       },
       handler: async (args: any, runtimeCtx?: any) => {
         const runtime = await resolveGroupRuntime(runtimeCtx);
         if ("error" in runtime) return { error: runtime.error };
         const { bot, selfId, groupId } = runtime;
-        const card = String(args?.card || "").trim();
-        if (!card) return { error: "card 不能为空" };
+        const action = String(args?.action || "");
+
         try {
-          await bot.setGroupCard(groupId, selfId, card);
-          return {
-            success: true,
-            message: `Bot在当前群的群名片已修改为 ${card}`,
-          };
+          switch (action) {
+            case "set_whole_ban":
+              await bot.api("set_group_whole_ban", {
+                group_id: groupId,
+                enable: true,
+              });
+              return { success: true, message: "当前群已开启全体禁言" };
+            case "unset_whole_ban":
+              await bot.api("set_group_whole_ban", {
+                group_id: groupId,
+                enable: false,
+              });
+              return { success: true, message: "当前群已关闭全体禁言" };
+            case "set_group_name": {
+              const groupName = String(args?.group_name || "").trim();
+              if (!groupName) return { error: "set_group_name 需要提供 group_name" };
+              await bot.api("set_group_name", {
+                group_id: groupId,
+                group_name: groupName,
+              });
+              return {
+                success: true,
+                message: `当前群名称已修改为 ${groupName}`,
+              };
+            }
+            case "set_self_card": {
+              const card = String(args?.card || "").trim();
+              if (!card) return { error: "set_self_card 需要提供 card" };
+              await bot.setGroupCard(groupId, selfId, card);
+              return {
+                success: true,
+                message: `Bot在当前群的群名片已修改为 ${card}`,
+              };
+            }
+            case "set_group_avatar": {
+              const messageId = Number(args?.message_id);
+              if (!Number.isFinite(messageId) || messageId <= 0) {
+                return { error: "set_group_avatar 需要提供有效的 message_id" };
+              }
+              const imageUrl = await getImageUrlByMessageId(bot, messageId);
+              if (!imageUrl) {
+                return { error: "指定 message_id 中未找到图片" };
+              }
+              await bot.api("set_group_portrait", {
+                group_id: groupId,
+                file: imageUrl,
+              });
+              return { success: true, message: "当前群头像已修改" };
+            }
+            case "recall_messages": {
+              const ids = Array.isArray(args?.message_ids)
+                ? args.message_ids
+                    .map((v: any) => Number(v))
+                    .filter((n: number) => Number.isFinite(n) && n > 0)
+                : [];
+              if (ids.length === 0) {
+                return { error: "recall_messages 需要提供至少一个 message_id" };
+              }
+              const results: Array<{
+                message_id: number;
+                success: boolean;
+                error?: string;
+              }> = [];
+              for (const id of ids) {
+                try {
+                  await bot.api("delete_msg", { message_id: id });
+                  results.push({ message_id: id, success: true });
+                } catch (err) {
+                  results.push({
+                    message_id: id,
+                    success: false,
+                    error: String(err),
+                  });
+                }
+              }
+              const ok = results.filter((r) => r.success).length;
+              return {
+                success: ok === results.length,
+                message: `共尝试撤回 ${results.length} 条消息，成功 ${ok} 条，失败 ${results.length - ok} 条`,
+                results,
+              };
+            }
+            default:
+              return { error: `未知的 action: ${action}` };
+          }
         } catch (err) {
-          logAdminSkillError(runtimeCtx, "admin_group.set_group_card", err);
-          return { error: `修改群名片失败: ${err}` };
-        }
-      },
-    },
-    {
-      name: "set_group_avatar",
-      description: "修改群头像",
-      parameters: {
-        type: "object",
-        properties: {
-          message_id: {
-            type: "number",
-            description: "包含图片的消息 message_id",
-          },
-        },
-        required: ["message_id"],
-      },
-      handler: async (args: any, runtimeCtx?: any) => {
-        const runtime = await resolveGroupRuntime(runtimeCtx);
-        if ("error" in runtime) return { error: runtime.error };
-        const { bot, groupId } = runtime;
-        const messageId = Number(args?.message_id);
-        if (!Number.isFinite(messageId) || messageId <= 0) {
-          return { error: "请提供有效的 message_id" };
-        }
-        const imageUrl = await getImageUrlByMessageId(bot, messageId);
-        if (!imageUrl) {
-          return { error: "指定 message_id 中未找到图片" };
-        }
-        try {
-          await bot.api("set_group_portrait", {
-            group_id: groupId,
-            file: imageUrl,
-          });
-          return { success: true, message: "当前群头像已修改" };
-        } catch (err) {
-          logAdminSkillError(runtimeCtx, "admin_group.set_group_avatar", err);
-          return { error: `修改群头像失败: ${err}` };
-        }
-      },
-    },
-    {
-      name: "set_group_title",
-      description: "设置群成员专属头衔",
-      parameters: {
-        type: "object",
-        properties: {
-          user_id: { type: "number", description: "成员QQ号" },
-          title: { type: "string", description: "新头衔" },
-        },
-        required: ["user_id", "title"],
-      },
-      handler: async (args: any, runtimeCtx?: any) => {
-        const runtime = await resolveGroupRuntime(runtimeCtx);
-        if ("error" in runtime) return { error: runtime.error };
-        const { bot, groupId } = runtime;
-        try {
-          await (bot as any).setGroupSpecialTitle(
-            groupId,
-            args.user_id,
-            args.title,
-          );
-          return {
-            success: true,
-            message: `已将 ${args.user_id} 的头衔设为 "${args.title}"`,
-          };
-        } catch (err) {
-          logAdminSkillError(runtimeCtx, "admin_group.set_group_title", err);
-          return { error: `设置头衔失败: ${err}` };
-        }
-      },
-    },
-    {
-      name: "set_self_group_title",
-      description: "给当前发起用户设置自己的群专属头衔，不能指定或修改别人",
-      parameters: {
-        type: "object",
-        properties: {
-          title: { type: "string", description: "新头衔" },
-        },
-        required: ["title"],
-      },
-      handler: async (args: any, runtimeCtx?: any) => {
-        const runtime = await resolveGroupRuntime(runtimeCtx);
-        if ("error" in runtime) return { error: runtime.error };
-        const { bot, groupId } = runtime;
-        const event = runtimeCtx?.event || runtimeCtx?.rawEvent;
-        const userId = event?.user_id;
-        if (!userId) return { error: "无法获取当前用户ID" };
-        const title = String(args?.title || "").trim();
-        if (!title) return { error: "title 不能为空" };
-        try {
-          await (bot as any).setGroupSpecialTitle(groupId, userId, title);
-          return {
-            success: true,
-            message: `已将你的头衔设为 "${title}"`,
-          };
-        } catch (err) {
-          logAdminSkillError(
-            runtimeCtx,
-            "admin_group.set_self_group_title",
-            err,
-          );
-          return { error: `设置头衔失败: ${err}` };
+          logAdminSkillError(runtimeCtx, `admin_group.manage_group.${action}`, err);
+          return { error: `执行 ${action} 失败: ${err}` };
         }
       },
     },

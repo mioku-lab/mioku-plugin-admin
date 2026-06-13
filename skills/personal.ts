@@ -21,352 +21,202 @@ function logAdminSkillError(runtimeCtx: any, toolName: string, err: unknown) {
 const personalSkill: AISkill = {
   name: "admin_personal",
   description:
-    "个人账号管理工具，提供修改自己头像、昵称、个性签名、性别、发送消息、查看好友/群列表等操作",
+    "Bot个人账号与消息管理统一入口。action 决定行为：修改Bot资料(set_avatar/set_nickname/set_signature/set_gender)、发送消息(send_private/send_group)、获取列表(list_friends/list_groups)、管理关系(delete_friend/leave_group)。",
   permission: "owner",
   tools: [
     {
-      name: "set_bot_avatar",
-      description: "修改Bot头像",
+      name: "manage_personal",
+      description:
+        "Bot个人账号管理：修改头像/昵称/签名/性别、给指定用户或群发消息、查看好友/群列表、删除好友、退群。所有功能通过 action 字段区分。",
       parameters: {
         type: "object",
         properties: {
-          message_id: {
-            type: "number",
-            description: "包含图片的消息 message_id",
-          },
-        },
-        required: ["message_id"],
-      },
-      handler: async (args: any, runtimeCtx?: any) => {
-        const ctx = runtimeCtx?.ctx;
-        if (!ctx) return { error: "无法获取上下文" };
-        const selfId =
-          runtimeCtx?.event?.self_id || runtimeCtx?.rawEvent?.self_id;
-        if (!selfId) return { error: "无法获取Bot ID" };
-        const bot = ctx.pickBot(selfId);
-        if (!bot) return { error: "Bot不可用" };
-        const messageId = Number(args?.message_id);
-        if (!Number.isFinite(messageId) || messageId <= 0) {
-          return { error: "请提供有效的 message_id" };
-        }
-        const imageUrl = await getImageUrlByMessageId(bot, messageId);
-        if (!imageUrl) {
-          return { error: "指定 message_id 中未找到图片" };
-        }
-        try {
-          await bot.api("set_qq_avatar", { file: imageUrl });
-          return { success: true, message: "Bot头像已修改" };
-        } catch (err) {
-          logAdminSkillError(runtimeCtx, "admin_personal.set_bot_avatar", err);
-          return { error: `修改头像失败: ${err}` };
-        }
-      },
-    },
-    {
-      name: "set_bot_nickname",
-      description: "修改Bot昵称",
-      parameters: {
-        type: "object",
-        properties: { nickname: { type: "string", description: "新昵称" } },
-        required: ["nickname"],
-      },
-      handler: async (args: any, runtimeCtx?: any) => {
-        const ctx = runtimeCtx?.ctx;
-        if (!ctx) return { error: "无法获取上下文" };
-        const selfId =
-          runtimeCtx?.event?.self_id || runtimeCtx?.rawEvent?.self_id;
-        if (!selfId) return { error: "无法获取Bot ID" };
-        const bot = ctx.pickBot(selfId);
-        if (!bot) return { error: "Bot不可用" };
-        try {
-          await bot.api("set_qq_profile", {
-            nickname: String(args.nickname || "").trim(),
-          });
-          return {
-            success: true,
-            message: `Bot昵称已修改为: ${args.nickname}`,
-          };
-        } catch (err) {
-          logAdminSkillError(
-            runtimeCtx,
-            "admin_personal.set_bot_nickname",
-            err,
-          );
-          return { error: `修改昵称失败: ${err}` };
-        }
-      },
-    },
-    {
-      name: "set_bot_signature",
-      description: "修改Bot个性签名",
-      parameters: {
-        type: "object",
-        properties: {
-          personal_note: { type: "string", description: "新个性签名" },
-        },
-        required: ["personal_note"],
-      },
-      handler: async (args: any, runtimeCtx?: any) => {
-        const ctx = runtimeCtx?.ctx;
-        if (!ctx) return { error: "无法获取上下文" };
-        const selfId =
-          runtimeCtx?.event?.self_id || runtimeCtx?.rawEvent?.self_id;
-        if (!selfId) return { error: "无法获取Bot ID" };
-        const bot = ctx.pickBot(selfId);
-        if (!bot) return { error: "Bot不可用" };
-        const personalNote = String(args?.personal_note || "").trim();
-        if (!personalNote) return { error: "personal_note 不能为空" };
-        try {
-          await bot.api("set_qq_profile", { personal_note: personalNote });
-          return { success: true, message: "Bot个性签名已修改" };
-        } catch (err) {
-          logAdminSkillError(
-            runtimeCtx,
-            "admin_personal.set_bot_signature",
-            err,
-          );
-          return { error: `修改个性签名失败: ${err}` };
-        }
-      },
-    },
-    {
-      name: "set_bot_gender",
-      description: "修改Bot性别",
-      parameters: {
-        type: "object",
-        properties: {
-          gender: {
+          action: {
             type: "string",
-            description: "性别：男/女/无 或 male/female/unknown",
+            description: "要执行的动作",
             enum: [
-              "male",
-              "female",
-              "unknown",
-              "男",
-              "女",
-              "无",
-              "0",
-              "1",
-              "2",
+              "set_avatar",
+              "set_nickname",
+              "set_signature",
+              "set_gender",
+              "send_private",
+              "send_group",
+              "list_friends",
+              "list_groups",
+              "delete_friend",
+              "leave_group",
             ],
           },
+          message_id: {
+            type: "number",
+            description: "包含图片的消息 message_id，仅 set_avatar 需要",
+          },
+          nickname: {
+            type: "string",
+            description: "新昵称，仅 set_nickname 需要",
+          },
+          personal_note: {
+            type: "string",
+            description: "新个性签名，仅 set_signature 需要",
+          },
+          gender: {
+            type: "string",
+            description:
+              "性别：男/女/无 或 male/female/unknown 或 1/2/0，仅 set_gender 需要",
+          },
+          user_id: {
+            type: "number",
+            description:
+              "目标QQ号。send_private / delete_friend 需要。",
+          },
+          group_id: {
+            type: "number",
+            description: "目标群号。send_group / leave_group 需要。",
+          },
+          content: {
+            type: "string",
+            description: "消息内容。send_private / send_group 需要。",
+          },
         },
-        required: ["gender"],
+        required: ["action"],
       },
       handler: async (args: any, runtimeCtx?: any) => {
-        const ctx = runtimeCtx?.ctx;
-        if (!ctx) return { error: "无法获取上下文" };
-        const selfId =
-          runtimeCtx?.event?.self_id || runtimeCtx?.rawEvent?.self_id;
-        if (!selfId) return { error: "无法获取Bot ID" };
-        const bot = ctx.pickBot(selfId);
-        if (!bot) return { error: "Bot不可用" };
-        try {
-          const sex = parseProfileSex(args.gender);
-          await bot.api("set_qq_profile", { sex });
-          const genderMap: Record<number, string> = {
-            0: "无",
-            1: "男",
-            2: "女",
-          };
-          return {
-            success: true,
-            message: `Bot性别已修改为: ${genderMap[sex]}`,
-          };
-        } catch (err) {
-          logAdminSkillError(runtimeCtx, "admin_personal.set_bot_gender", err);
-          return { error: `修改性别失败: ${err}` };
-        }
-      },
-    },
-    {
-      name: "send_private_message",
-      description: "给指定QQ号发送私聊消息",
-      parameters: {
-        type: "object",
-        properties: {
-          user_id: { type: "number", description: "目标QQ号" },
-          content: { type: "string", description: "消息内容" },
-        },
-        required: ["user_id", "content"],
-      },
-      handler: async (args: any, runtimeCtx?: any) => {
-        const ctx = runtimeCtx?.ctx;
-        if (!ctx) return { error: "无法获取上下文" };
-        const selfId =
-          runtimeCtx?.event?.self_id || runtimeCtx?.rawEvent?.self_id;
-        if (!selfId) return { error: "无法获取Bot ID" };
-        const bot = ctx.pickBot(selfId);
-        if (!bot) return { error: "Bot不可用" };
-        try {
-          await bot.sendPrivateMsg(args.user_id, [
-            ctx.segment.text(args.content),
-          ]);
-          return { success: true, message: `已发送私聊消息给 ${args.user_id}` };
-        } catch (err) {
-          logAdminSkillError(
-            runtimeCtx,
-            "admin_personal.send_private_message",
-            err,
-          );
-          return { error: `发送私聊失败: ${err}` };
-        }
-      },
-    },
-    {
-      name: "send_group_message",
-      description: "给指定群发送消息",
-      parameters: {
-        type: "object",
-        properties: {
-          group_id: { type: "number", description: "目标群号" },
-          content: { type: "string", description: "消息内容" },
-        },
-        required: ["group_id", "content"],
-      },
-      handler: async (args: any, runtimeCtx?: any) => {
-        const ctx = runtimeCtx?.ctx;
-        if (!ctx) return { error: "无法获取上下文" };
-        const selfId =
-          runtimeCtx?.event?.self_id || runtimeCtx?.rawEvent?.self_id;
-        if (!selfId) return { error: "无法获取Bot ID" };
-        const bot = ctx.pickBot(selfId);
-        if (!bot) return { error: "Bot不可用" };
-        try {
-          await bot.sendGroupMsg(args.group_id, [
-            ctx.segment.text(args.content),
-          ]);
-          return { success: true, message: `已发送群消息到 ${args.group_id}` };
-        } catch (err) {
-          logAdminSkillError(
-            runtimeCtx,
-            "admin_personal.send_group_message",
-            err,
-          );
-          return { error: `发送群消息失败: ${err}` };
-        }
-      },
-    },
-    {
-      name: "get_friend_list",
-      description:
-        "获取Bot的全部好友列表，对应/全部好友命令，仅适合在私聊场景调用",
-      parameters: { type: "object", properties: {}, required: [] },
-      handler: async (_args: any, runtimeCtx?: any) => {
         const ctx = runtimeCtx?.ctx;
         if (!ctx) return { error: "无法获取上下文" };
         const event = runtimeCtx?.event || runtimeCtx?.rawEvent;
-        if (event?.message_type === "group") {
-          return { error: "在私聊使用试试看吧～" };
-        }
-        const selfId =
-          runtimeCtx?.event?.self_id || runtimeCtx?.rawEvent?.self_id;
+        const selfId = event?.self_id;
         if (!selfId) return { error: "无法获取Bot ID" };
         const bot = ctx.pickBot(selfId);
         if (!bot) return { error: "Bot不可用" };
+        const action = String(args?.action || "");
+
         try {
-          const friendList: any[] = await bot.api("get_friend_list");
-          if (!Array.isArray(friendList)) return { friends: [] };
-          return {
-            friends: friendList.map((f) => ({
-              user_id: f.user_id,
-              nickname: f.nickname,
-              remark: f.remark,
-            })),
-          };
+          switch (action) {
+            case "set_avatar": {
+              const messageId = Number(args?.message_id);
+              if (!Number.isFinite(messageId) || messageId <= 0) {
+                return { error: "set_avatar 需要提供有效的 message_id" };
+              }
+              const imageUrl = await getImageUrlByMessageId(bot, messageId);
+              if (!imageUrl) {
+                return { error: "指定 message_id 中未找到图片" };
+              }
+              await bot.api("set_qq_avatar", { file: imageUrl });
+              return { success: true, message: "Bot头像已修改" };
+            }
+            case "set_nickname": {
+              const nickname = String(args?.nickname || "").trim();
+              if (!nickname) {
+                return { error: "set_nickname 需要提供 nickname" };
+              }
+              await bot.api("set_qq_profile", { nickname });
+              return {
+                success: true,
+                message: `Bot昵称已修改为: ${nickname}`,
+              };
+            }
+            case "set_signature": {
+              const personalNote = String(args?.personal_note || "").trim();
+              if (!personalNote) {
+                return { error: "set_signature 需要提供 personal_note" };
+              }
+              await bot.api("set_qq_profile", { personal_note: personalNote });
+              return { success: true, message: "Bot个性签名已修改" };
+            }
+            case "set_gender": {
+              const sex = parseProfileSex(args?.gender);
+              await bot.api("set_qq_profile", { sex });
+              const genderMap: Record<number, string> = {
+                0: "无",
+                1: "男",
+                2: "女",
+              };
+              return {
+                success: true,
+                message: `Bot性别已修改为: ${genderMap[sex]}`,
+              };
+            }
+            case "send_private": {
+              const userId = Number(args?.user_id);
+              const content = String(args?.content || "");
+              if (!userId || !content) {
+                return { error: "send_private 需要提供 user_id 和 content" };
+              }
+              await bot.sendPrivateMsg(userId, [ctx.segment.text(content)]);
+              return {
+                success: true,
+                message: `已发送私聊消息给 ${userId}`,
+              };
+            }
+            case "send_group": {
+              const groupId = Number(args?.group_id);
+              const content = String(args?.content || "");
+              if (!groupId || !content) {
+                return { error: "send_group 需要提供 group_id 和 content" };
+              }
+              await bot.sendGroupMsg(groupId, [ctx.segment.text(content)]);
+              return {
+                success: true,
+                message: `已发送群消息到 ${groupId}`,
+              };
+            }
+            case "list_friends": {
+              if (event?.message_type === "group") {
+                return { error: "在私聊使用试试看吧～" };
+              }
+              const friendList: any[] = await bot.api("get_friend_list");
+              if (!Array.isArray(friendList)) return { friends: [] };
+              return {
+                friends: friendList.map((f) => ({
+                  user_id: f.user_id,
+                  nickname: f.nickname,
+                  remark: f.remark,
+                })),
+              };
+            }
+            case "list_groups": {
+              if (event?.message_type === "group") {
+                return { error: "在私聊使用试试看吧～" };
+              }
+              const groupList: any[] = await bot.api("get_group_list");
+              if (!Array.isArray(groupList)) return { groups: [] };
+              return {
+                groups: groupList.map((g) => ({
+                  group_id: g.group_id,
+                  group_name: g.group_name,
+                  member_count: g.member_count,
+                })),
+              };
+            }
+            case "delete_friend": {
+              const userId = Number(args?.user_id);
+              if (!userId) {
+                return { error: "delete_friend 需要提供 user_id" };
+              }
+              await bot.api("delete_friend", { user_id: userId });
+              return { success: true, message: `已删除好友 ${userId}` };
+            }
+            case "leave_group": {
+              const groupId = Number(args?.group_id);
+              if (!groupId) {
+                return { error: "leave_group 需要提供 group_id" };
+              }
+              await bot.api("set_group_leave", {
+                group_id: groupId,
+                is_dismiss: false,
+              });
+              return { success: true, message: `已退出群 ${groupId}` };
+            }
+            default:
+              return { error: `未知的 action: ${action}` };
+          }
         } catch (err) {
-          logAdminSkillError(runtimeCtx, "admin_personal.get_friend_list", err);
-          return { error: `获取好友列表失败: ${err}` };
-        }
-      },
-    },
-    {
-      name: "get_group_list",
-      description:
-        "获取Bot的全部群聊列表，对应/全部群聊命令，仅适合在私聊场景调用",
-      parameters: { type: "object", properties: {}, required: [] },
-      handler: async (_args: any, runtimeCtx?: any) => {
-        const ctx = runtimeCtx?.ctx;
-        if (!ctx) return { error: "无法获取上下文" };
-        const event = runtimeCtx?.event || runtimeCtx?.rawEvent;
-        if (event?.message_type === "group") {
-          return { error: "在私聊使用试试看吧～" };
-        }
-        const selfId =
-          runtimeCtx?.event?.self_id || runtimeCtx?.rawEvent?.self_id;
-        if (!selfId) return { error: "无法获取Bot ID" };
-        const bot = ctx.pickBot(selfId);
-        if (!bot) return { error: "Bot不可用" };
-        try {
-          const groupList: any[] = await bot.api("get_group_list");
-          if (!Array.isArray(groupList)) return { groups: [] };
-          return {
-            groups: groupList.map((g) => ({
-              group_id: g.group_id,
-              group_name: g.group_name,
-              member_count: g.member_count,
-            })),
-          };
-        } catch (err) {
-          logAdminSkillError(runtimeCtx, "admin_personal.get_group_list", err);
-          return { error: `获取群聊列表失败: ${err}` };
-        }
-      },
-    },
-    {
-      name: "delete_friend",
-      description: "删除好友",
-      parameters: {
-        type: "object",
-        properties: {
-          user_id: { type: "number", description: "要删除的好友QQ号" },
-        },
-        required: ["user_id"],
-      },
-      handler: async (args: any, runtimeCtx?: any) => {
-        const ctx = runtimeCtx?.ctx;
-        if (!ctx) return { error: "无法获取上下文" };
-        const selfId =
-          runtimeCtx?.event?.self_id || runtimeCtx?.rawEvent?.self_id;
-        if (!selfId) return { error: "无法获取Bot ID" };
-        const bot = ctx.pickBot(selfId);
-        if (!bot) return { error: "Bot不可用" };
-        try {
-          await bot.api("delete_friend", { user_id: args.user_id });
-          return { success: true, message: `已删除好友 ${args.user_id}` };
-        } catch (err) {
-          logAdminSkillError(runtimeCtx, "admin_personal.delete_friend", err);
-          return { error: `删除好友失败: ${err}` };
-        }
-      },
-    },
-    {
-      name: "leave_group",
-      description: "退出群聊",
-      parameters: {
-        type: "object",
-        properties: {
-          group_id: { type: "number", description: "要退出的群号" },
-        },
-        required: ["group_id"],
-      },
-      handler: async (args: any, runtimeCtx?: any) => {
-        const ctx = runtimeCtx?.ctx;
-        if (!ctx) return { error: "无法获取上下文" };
-        const selfId =
-          runtimeCtx?.event?.self_id || runtimeCtx?.rawEvent?.self_id;
-        if (!selfId) return { error: "无法获取Bot ID" };
-        const bot = ctx.pickBot(selfId);
-        if (!bot) return { error: "Bot不可用" };
-        try {
-          await bot.api("set_group_leave", {
-            group_id: args.group_id,
-            is_dismiss: false,
-          });
-          return { success: true, message: `已退出群 ${args.group_id}` };
-        } catch (err) {
-          logAdminSkillError(runtimeCtx, "admin_personal.leave_group", err);
-          return { error: `退群失败: ${err}` };
+          logAdminSkillError(
+            runtimeCtx,
+            `admin_personal.manage_personal.${action}`,
+            err,
+          );
+          return { error: `执行 ${action} 失败: ${err}` };
         }
       },
     },

@@ -41,6 +41,8 @@ export function registerGroupAdminCommands(ctx: MiokiContext) {
       "/改群名片",
       "/改群昵称",
       "/改群头像",
+      "/撤回",
+      "撤回",
     ].some((prefix) => text.startsWith(prefix));
 
     try {
@@ -474,6 +476,40 @@ export function registerGroupAdminCommands(ctx: MiokiContext) {
             event,
             instruction: `改群头像执行失败 ${String(err)}`,
             fallbackMessage: `出错了，笨蛋～ ${String(err)}`,
+            error: err,
+          });
+        }
+        return;
+      }
+
+      // 撤回 — 引用一条消息后，bot 撤回该消息
+      if (text === "/撤回" || text === "撤回") {
+        if (!isGroup || !groupId) {
+          return event.reply("这个要在群里用哦～", true);
+        }
+        if (!(await ensureAdminPermission())) return;
+
+        const quotedId = event.quote_id;
+        if (!quotedId) {
+          await replyAdminErrorNotice({
+            ctx,
+            event,
+            instruction:
+              "用户希望撤回一条消息，但命令中没有引用具体消息，请提醒用户引用要撤回的消息后输入 /撤回",
+            fallbackMessage: "要撤回哪条消息呀～先引用一下～",
+          });
+          return;
+        }
+
+        try {
+          await bot.api("delete_msg", { message_id: quotedId });
+          await replyDone();
+        } catch (err) {
+          await replyAdminErrorNotice({
+            ctx,
+            event,
+            instruction: `撤回消息执行失败：${String(err)}。失败原因通常是Bot没有该消息的撤回权限（需要Bot为群主或管理员，且消息发出不超过2分钟），管理员无法撤回管理员的消息或群主的消息。`,
+            fallbackMessage: `撤回失败啦～可能是没权限或消息超过2分钟了：${String(err)}`,
             error: err,
           });
         }

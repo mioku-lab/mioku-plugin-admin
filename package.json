@@ -1,6 +1,6 @@
 {
   "name": "mioku-plugin-admin",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "管理插件，提供事件通知与群管/个人管理指令",
   "main": "index.ts",
   "type": "module",
@@ -52,6 +52,10 @@
       {
         "id": "/改群头像",
         "match": "/^\\/改群头像/"
+      },
+      {
+        "id": "/撤回",
+        "match": "/^(\\/撤回|撤回)/"
       },
       {
         "id": "/改头衔",
@@ -147,6 +151,12 @@
         {
           "cmd": "/改群头像",
           "desc": "修改群头像",
+          "role": "admin"
+        },
+        {
+          "cmd": "/撤回",
+          "desc": "撤回别人的消息",
+          "usage": "引用一条消息后输入 /撤回",
           "role": "admin"
         },
         {
