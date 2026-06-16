@@ -1,6 +1,6 @@
 {
   "name": "mioku-plugin-admin",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "description": "管理插件，提供事件通知与群管/个人管理指令",
   "main": "index.ts",
   "type": "module",

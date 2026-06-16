@@ -298,7 +298,7 @@ const groupAdminSkill: AISkill = {
               const ids = Array.isArray(args?.message_ids)
                 ? args.message_ids
                     .map((v: any) => Number(v))
-                    .filter((n: number) => Number.isFinite(n) && n > 0)
+                    .filter((n: number) => Number.isFinite(n) && n !== 0)
                 : [];
               if (ids.length === 0) {
                 return { error: "recall_messages 需要提供至少一个 message_id" };
