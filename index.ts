@@ -31,7 +31,7 @@ export default definePlugin({
       });
     }
 
-    setPluginRuntimeState<RuntimeState>("admin", { ctx });
+    setPluginRuntimeState("admin", { ctx });
 
     const getConfig = () => config;
 
