@@ -72,6 +72,58 @@ fields:
     description: 短时间内多个新成员入群时，攒齐该时长内的成员后只发一次 AI 欢迎，避免频繁调用模型。设为 0 表示关闭聚合、逐个欢迎。默认 20000。
     placeholder: 20000
 
+  - key: verify.groups
+    label: 各群入群验证配置
+    type: json
+    description: 每个群的验证配置数组，元素形如 {"groupId":123,"enabled":true,"mode":"reaction"}。推荐通过 /开启验证、/关闭验证、/切换验证模式 指令管理，直接编辑需填写合法 JSON 数组。
+    placeholder: '[]'
+
+  - key: verify.reactionEmojiId
+    label: 回应模式表态表情ID
+    type: text
+    description: 回应验证模式下，Bot 给提示消息添加的表态表情 ID，新成员点击该表态即通过验证。默认 424。
+    placeholder: "424"
+
+  - key: verify.reactionDelayMs
+    label: 回应模式延迟 (毫秒)
+    type: number
+    description: 回应模式下新成员入群后，Bot 等待多久再 @新成员发出验证提示并添加表态。默认 3000。重新验证指令不受此延迟影响。
+    placeholder: 3000
+
+  - key: verify.verifyTimeoutMs
+    label: 验证超时 (毫秒)
+    type: number
+    description: 新成员未在此时长内完成验证则视为超时，按下方配置决定是否踢出。默认 120000（2分钟）。
+    placeholder: 120000
+
+  - key: verify.reactionPrompt
+    label: 回应模式提示语
+    type: textarea
+    description: 回应模式下 @新成员 时发送的提示文本。
+    placeholder: 新来的小伙伴请在2分钟内点击下方红色按钮完成验证 不听话会被移出群聊喵~
+
+  - key: verify.numberPrompt
+    label: 数字模式提示语
+    type: textarea
+    description: 数字模式下的提示文本，支持 {question} 占位符替换算术题。
+    placeholder: '新来的小伙伴请在2分钟内回答下面的算术题完成验证，答错或发无关消息会被移出群聊喵~ 题目：{question}'
+
+  - key: verify.maxInvalidMessages
+    label: 最大无关消息数
+    type: number
+    description: 未验证成员发送与验证无关的消息达到该次数后踢出群聊。默认 5。
+    placeholder: 5
+
+  - key: verify.kickOnFail
+    label: 达到上限踢出
+    type: switch
+    description: 未验证成员无关消息达到上限时是否踢出群聊
+
+  - key: verify.kickOnTimeout
+    label: 超时踢出
+    type: switch
+    description: 新成员验证超时是否踢出群聊
+
 ---
 
 ```mioku-fields
@@ -88,4 +140,13 @@ keys:
   - base.welcome.text
   - base.welcome.aiPrompt
   - base.welcome.batchWindowMs
+  - verify.groups
+  - verify.reactionEmojiId
+  - verify.reactionDelayMs
+  - verify.verifyTimeoutMs
+  - verify.reactionPrompt
+  - verify.numberPrompt
+  - verify.maxInvalidMessages
+  - verify.kickOnFail
+  - verify.kickOnTimeout
 ```

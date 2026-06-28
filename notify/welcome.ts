@@ -73,8 +73,10 @@ async function flushBatch(options: {
   groupId: number;
   groupName: string;
   members: PendingMember[];
+  promptInjections?: { content: string; title?: string }[];
 }): Promise<string> {
-  const { ctx, aiService, config, selfId, groupId, groupName, members } = options;
+  const { ctx, aiService, config, selfId, groupId, groupName, members, promptInjections } =
+    options;
   if (!members.length) return "";
 
   const names = members.map((m) => m.memberName || String(m.userId));
@@ -110,6 +112,7 @@ async function flushBatch(options: {
         `所在群：${groupName}`,
         `${config.welcome.aiPrompt || ""}`,
       ].join("\n"),
+      promptInjections,
     });
 
     return "";
@@ -119,10 +122,90 @@ async function flushBatch(options: {
   }
 }
 
+async function sendSingleWelcome(options: {
+  ctx: MiokiContext;
+  aiService?: AIService;
+  config: AdminConfig;
+  selfId: number;
+  groupId: number;
+  groupName: string;
+  userId: number;
+  memberName: string;
+  promptInjections?: { content: string; title?: string }[];
+}): Promise<void> {
+  const {
+    ctx,
+    aiService,
+    config,
+    selfId,
+    groupId,
+    groupName,
+    userId,
+    memberName,
+    promptInjections,
+  } = options;
+  const welcomeMessage = await flushBatch({
+    ctx,
+    aiService,
+    config,
+    selfId,
+    groupId,
+    groupName,
+    members: [{ userId, memberName }],
+    promptInjections,
+  });
+  if (!welcomeMessage) return;
+  const bot = ctx.pickBot(selfId);
+  if (!bot) return;
+  try {
+    await bot.sendGroupMsg(groupId, [ctx.segment.text(welcomeMessage)]);
+  } catch (error) {
+    ctx.logger.warn(`发送入群欢迎失败: ${error}`);
+  }
+}
+
+export async function triggerSingleWelcome(options: {
+  ctx: MiokiContext;
+  aiService?: AIService;
+  getConfig: () => AdminConfig;
+  selfId: number;
+  groupId: number;
+  groupName: string;
+  userId: number;
+  memberName?: string;
+  promptInjections?: { content: string; title?: string }[];
+}): Promise<void> {
+  const memberName =
+    options.memberName ||
+    (await resolveMemberName(
+      options.ctx,
+      options.groupId,
+      options.userId,
+      options.selfId,
+    ));
+  await sendSingleWelcome({
+    ctx: options.ctx,
+    aiService: options.aiService,
+    config: options.getConfig(),
+    selfId: options.selfId,
+    groupId: options.groupId,
+    groupName: options.groupName,
+    userId: options.userId,
+    memberName,
+    promptInjections: options.promptInjections,
+  });
+}
+
 export function registerWelcomeHandler(
   ctx: MiokiContext,
   aiService: AIService | undefined,
   getConfig: () => AdminConfig,
+  shouldSuppress?: (info: {
+    selfId: number;
+    groupId: number;
+    userId: number;
+    groupName: string;
+  }) => Promise<boolean> | boolean,
 ): () => void {
   const batches = getBatchMap();
 
@@ -134,10 +217,17 @@ export function registerWelcomeHandler(
     if (!groupId || !userId) return;
     if (userId === selfId) return;
 
-    if (!cfg.welcome.enabled) return;
-
     const groupName =
       String(event?.group?.group_name || "").trim() || String(groupId);
+
+    if (
+      shouldSuppress &&
+      (await shouldSuppress({ selfId, groupId, userId, groupName }))
+    ) {
+      return;
+    }
+
+    if (!cfg.welcome.enabled) return;
 
     const batchWindowMs = Math.max(0, Number(cfg.welcome.batchWindowMs) || 0);
 
