@@ -8,6 +8,13 @@ export interface AdminConfig {
   notifyGroupBan: boolean;
   notifyGroupUnban: boolean;
   notifyGroupKick: boolean;
+  welcome: {
+    enabled: boolean;
+    mode: "ai" | "text";
+    text: string;
+    aiPrompt: string;
+    batchWindowMs: number;
+  };
 }
 
 export const DEFAULT_CONFIG: AdminConfig = {
@@ -18,6 +25,13 @@ export const DEFAULT_CONFIG: AdminConfig = {
   notifyGroupBan: true,
   notifyGroupUnban: true,
   notifyGroupKick: true,
+  welcome: {
+    enabled: true,
+    mode: "ai",
+    text: "欢迎新人～",
+    aiPrompt: "",
+    batchWindowMs: 20000,
+  },
 };
 
 export function normalizeConfig(raw: any): AdminConfig {
@@ -33,7 +47,29 @@ export function normalizeConfig(raw: any): AdminConfig {
     notifyGroupBan: raw?.notifyGroupBan ?? DEFAULT_CONFIG.notifyGroupBan,
     notifyGroupUnban: raw?.notifyGroupUnban ?? DEFAULT_CONFIG.notifyGroupUnban,
     notifyGroupKick: raw?.notifyGroupKick ?? DEFAULT_CONFIG.notifyGroupKick,
+    welcome: {
+      enabled:
+        raw?.welcome?.enabled ?? DEFAULT_CONFIG.welcome.enabled,
+      mode: raw?.welcome?.mode === "text" ? "text" : "ai",
+      text:
+        typeof raw?.welcome?.text === "string"
+          ? raw.welcome.text
+          : DEFAULT_CONFIG.welcome.text,
+      aiPrompt:
+        typeof raw?.welcome?.aiPrompt === "string"
+          ? raw.welcome.aiPrompt
+          : DEFAULT_CONFIG.welcome.aiPrompt,
+      batchWindowMs: normalizeBatchWindowMs(raw?.welcome?.batchWindowMs),
+    },
   };
+}
+
+function normalizeBatchWindowMs(value: unknown): number {
+  const num = Number(value);
+  if (!Number.isFinite(num) || num < 0) {
+    return DEFAULT_CONFIG.welcome.batchWindowMs;
+  }
+  return Math.floor(num);
 }
 
 // 格式化秒数为可读时长

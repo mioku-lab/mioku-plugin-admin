@@ -1,11 +1,12 @@
 import { definePlugin, type MiokiContext } from "mioki";
-import type { ConfigService } from "mioku";
+import type { AIService, ConfigService } from "mioku";
 import { setPluginRuntimeState, resetPluginRuntimeState } from "mioku";
 import { DEFAULT_CONFIG, normalizeConfig } from "./config";
 import type { AdminConfig } from "./config";
 import { registerNotificationHandlers } from "./notify";
 import { registerPersonalCommands } from "./commands/personal";
 import { registerGroupAdminCommands } from "./commands/group";
+import { registerWelcomeHandler } from "./notify/welcome";
 
 interface RuntimeState {
   ctx?: MiokiContext;
@@ -15,10 +16,11 @@ interface RuntimeState {
 export default definePlugin({
   name: "admin",
   version: "1.0.0",
-  description: "管理插件，提供事件通知与管理指令",
+  description: "管理插件，提供事件通知与群管/个人管理指令",
 
   async setup(ctx: MiokiContext) {
     const configService = ctx.services?.config as ConfigService | undefined;
+    const aiService = ctx.services?.ai as AIService | undefined;
 
     let config: AdminConfig = { ...DEFAULT_CONFIG };
 
@@ -37,6 +39,9 @@ export default definePlugin({
 
     // 注册事件通知
     registerNotificationHandlers(ctx, getConfig);
+
+    // 注册新人入群欢迎
+    registerWelcomeHandler(ctx, aiService, getConfig);
 
     // 注册指令
     registerPersonalCommands(ctx);

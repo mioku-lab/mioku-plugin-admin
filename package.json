@@ -1,6 +1,6 @@
 {
   "name": "mioku-plugin-admin",
-  "version": "2.2.2",
+  "version": "2.2.3",
   "description": "管理插件，提供事件通知与群管/个人管理指令",
   "main": "index.ts",
   "type": "module",
@@ -112,6 +112,11 @@
       {
         "id": "/全部群聊",
         "match": "/^\\/全部群聊/"
+      },
+      {
+        "id": "welcome",
+        "event": "notice.group.increase",
+        "description": "新人入群相关功能"
       }
     ],
     "help": {

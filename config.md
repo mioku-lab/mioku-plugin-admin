@@ -39,6 +39,39 @@ fields:
     type: switch
     description: Bot被踢出群聊时通知主人
 
+  - key: base.welcome.enabled
+    label: 启用新人入群欢迎
+    type: switch
+    description: 新人（非机器人）入群时发送欢迎消息
+
+  - key: base.welcome.mode
+    label: 欢迎模式
+    type: select
+    options:
+      - value: ai
+        label: 使用AI生成
+      - value: text
+        label: 固定文本
+    description: AI 模式由 chat-runtime 模型生成；text 模式直接套用固定欢迎模板
+
+  - key: base.welcome.text
+    label: 固定欢迎文本
+    type: textarea
+    description: 欢迎模板，支持 {user} 和 {group} 占位符
+    placeholder: 欢迎新人～
+
+  - key: base.welcome.aiPrompt
+    label: AI欢迎额外提示词
+    type: textarea
+    description: 作为额外要求传给模型，默认留空即可
+    placeholder: 例如：提醒新成员查看群公告
+
+  - key: base.welcome.batchWindowMs
+    label: AI 欢迎聚合窗口 (毫秒)
+    type: number
+    description: 短时间内多个新成员入群时，攒齐该时长内的成员后只发一次 AI 欢迎，避免频繁调用模型。设为 0 表示关闭聚合、逐个欢迎。默认 20000。
+    placeholder: 20000
+
 ---
 
 ```mioku-fields
@@ -50,4 +83,9 @@ keys:
   - base.notifyGroupBan
   - base.notifyGroupUnban
   - base.notifyGroupKick
+  - base.welcome.enabled
+  - base.welcome.mode
+  - base.welcome.text
+  - base.welcome.aiPrompt
+  - base.welcome.batchWindowMs
 ```
