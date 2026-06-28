@@ -2,7 +2,11 @@ import type { MiokiContext } from "mioki";
 import type { AIService } from "mioku";
 import { getPluginRuntimeState } from "mioku";
 import type { AdminConfig, VerifyConfig, VerifyMode } from "../config";
-import { getGroupVerifyConfig } from "../config";
+import {
+  getGroupVerifyConfig,
+  upsertGroupVerifyConfig,
+  getMemberRole,
+} from "../config";
 import { resolveMemberName, triggerSingleWelcome } from "../notify/welcome";
 
 export interface VerifyControllerOptions {
@@ -11,6 +15,7 @@ export interface VerifyControllerOptions {
   getConfig: () => AdminConfig;
   getVerifyConfig: () => VerifyConfig;
   getWelcomeEnabled: () => boolean;
+  setVerifyConfig: (next: VerifyConfig) => Promise<void>;
 }
 
 export interface MemberJoinInfo {
@@ -93,9 +98,26 @@ export interface VerifyController {
 export function createVerifyController(
   options: VerifyControllerOptions,
 ): VerifyController {
-  const { ctx, aiService, getConfig, getVerifyConfig, getWelcomeEnabled } =
-    options;
+  const {
+    ctx,
+    aiService,
+    getConfig,
+    getVerifyConfig,
+    getWelcomeEnabled,
+    setVerifyConfig,
+  } = options;
   const pending = getPendingMap();
+
+  async function disableGroupVerify(groupId: number, reason: string) {
+    ctx.logger.warn(`admin verify 关闭群 ${groupId} 验证：${reason}`);
+    try {
+      await setVerifyConfig(
+        upsertGroupVerifyConfig(getVerifyConfig(), groupId, { enabled: false }),
+      );
+    } catch (err) {
+      ctx.logger.error(`admin verify 关闭群验证写回配置失败: ${err}`);
+    }
+  }
 
   async function recallMessage(bot: any, messageId: number) {
     try {
@@ -256,6 +278,25 @@ export function createVerifyController(
       return false;
     }
 
+    const bot = ctx.pickBot(info.selfId);
+    if (!bot) return false;
+
+    const botRole = await getMemberRole(bot, info.groupId, info.selfId);
+    if (botRole !== "owner" && botRole !== "admin") {
+      try {
+        await bot.sendGroupMsg(info.groupId, [
+          ctx.segment.text("我在不是管理员，没法入群验证啦，本群验证已关闭~"),
+        ]);
+      } catch (err) {
+        ctx.logger.warn(`admin verify 提醒本群验证关闭失败: ${err}`);
+      }
+      await disableGroupVerify(
+        info.groupId,
+        `Bot 群内身份为 ${botRole}，非群主/管理员`,
+      );
+      return false;
+    }
+
     const memberName = await resolveMemberName(
       ctx,
       info.groupId,
@@ -285,13 +326,10 @@ export function createVerifyController(
 
     if (mode === "reaction") {
       const delay = skipDelay ? 0 : Math.max(0, cfg.reactionDelayMs);
-      entry.delayTimer = setTimeout(
-        () => {
-          entry.delayTimer = null;
-          void sendReactionPrompt(entry);
-        },
-        delay,
-      );
+      entry.delayTimer = setTimeout(() => {
+        entry.delayTimer = null;
+        void sendReactionPrompt(entry);
+      }, delay);
     } else if (mode === "number") {
       void sendNumberPrompt(entry);
     }

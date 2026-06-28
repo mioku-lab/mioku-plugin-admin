@@ -205,6 +205,19 @@ export function registerVerifyCommands(options: VerifyCommandOptions) {
           return;
         }
 
+        const isTargetMaster = ctx.isOwner?.(atUser) ?? false;
+        const targetRole = await getMemberRole(bot, groupId, atUser);
+        if (isTargetMaster || targetRole === "owner" || targetRole === "admin") {
+          await replyAdminErrorNotice({
+            ctx,
+            event,
+            instruction:
+              "用户想让一位群主/管理员/主人重新验证，但这些成员无需验证。请告诉用户该成员是管理/群主或主人，不能对其重新验证。",
+            fallbackMessage: "管理/群主或主人可不用验证哦～",
+          });
+          return;
+        }
+
         try {
           const started = await verifyController.restartVerification({
             selfId,

@@ -71,6 +71,7 @@ export default definePlugin({
       getConfig,
       getVerifyConfig,
       getWelcomeEnabled,
+      setVerifyConfig,
     });
 
     // 注册事件通知
