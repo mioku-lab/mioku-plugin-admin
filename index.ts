@@ -1,20 +1,18 @@
 import { definePlugin, type MiokiContext } from "mioki";
 import type { AIService, ConfigService } from "mioku";
 import { setPluginRuntimeState, resetPluginRuntimeState } from "mioku";
+import { DEFAULT_CONFIG, normalizeConfig, type AdminConfig } from "./config";
 import {
-  DEFAULT_CONFIG,
   DEFAULT_VERIFY_CONFIG,
-  normalizeConfig,
   normalizeVerifyConfig,
-  type AdminConfig,
   type VerifyConfig,
-} from "./config";
+} from "./verify/config";
 import { registerNotificationHandlers } from "./notify";
 import { registerPersonalCommands } from "./commands/personal";
 import { registerGroupAdminCommands } from "./commands/group";
 import { registerVerifyCommands } from "./commands/verify";
 import { registerWelcomeHandler } from "./notify/welcome";
-import { createVerifyController } from "./verify/verify";
+import { createVerifyController } from "./verify";
 
 interface RuntimeState {
   ctx?: MiokiContext;

@@ -1,14 +1,13 @@
 import type { MiokiContext } from "mioki";
+import { getAtUserId, getMemberRole } from "../config";
 import {
-  getAtUserId,
   getGroupVerifyConfig,
-  getMemberRole,
   normalizeVerifyMode,
   upsertGroupVerifyConfig,
   type VerifyConfig,
-} from "../config";
+} from "../verify/config";
 import { replyAdminErrorNotice } from "./notice";
-import type { VerifyController } from "../verify/verify";
+import type { VerifyController } from "../verify/types";
 
 export interface VerifyCommandOptions {
   ctx: MiokiContext;

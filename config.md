@@ -106,7 +106,29 @@ fields:
     label: 数字模式提示语
     type: textarea
     description: 数字模式下的提示文本，支持 {question} 占位符替换算术题。
-    placeholder: '新来的小伙伴请在2分钟内回答下面的算术题完成验证，答错或发无关消息会被移出群聊喵~ 题目：{question}'
+    placeholder: '新来的小伙伴请在2分钟内回答下面的题目完成验证，不听话移出群聊喵~\n请问：{question}'
+
+  - key: verify.chiralApiUrl
+    label: 手性碳验证 API 地址
+    type: text
+    description: 手性碳模式调用的验证服务地址，默认 https://carbon.crystelf.top。你也可以参照 https://github.com/leafLeaf9/chiral-carbon-captcha 自行部署后填写自己的地址。
+    placeholder: https://carbon.crystelf.top
+
+  - key: verify.chiralDifficulty
+    label: 手性碳验证难度
+    type: select
+    options:
+      - value: simple
+        label: 简单（显示提示）
+      - value: hard
+        label: 困难（不显示提示）
+    description: 简单模式题图带提示标注，困难模式不带提示。
+
+  - key: verify.chiralPrompt
+    label: 手性碳模式提示语
+    type: textarea
+    description: 手性碳模式下随题图发送的提示文本，支持 {count} 占位符替换答案数量。
+    placeholder: '新来的小伙伴请在2分钟内完成下面的手性碳验证：找出图中{count}个手性碳所在的格子，回复格子编号即可，不听话会被移出群聊喵~'
 
   - key: verify.maxInvalidMessages
     label: 最大无关消息数
@@ -146,6 +168,9 @@ keys:
   - verify.verifyTimeoutMs
   - verify.reactionPrompt
   - verify.numberPrompt
+  - verify.chiralApiUrl
+  - verify.chiralDifficulty
+  - verify.chiralPrompt
   - verify.maxInvalidMessages
   - verify.kickOnFail
   - verify.kickOnTimeout
