@@ -1,9 +1,12 @@
 export type VerifyMode = "reaction" | "number" | "chiral";
 
+export const MAX_EXTRA_PROMPT_LENGTH = 50;
+
 export interface VerifyGroupConfig {
   groupId: number;
   enabled: boolean;
   mode: VerifyMode;
+  extraPrompt: string;
 }
 
 export interface VerifyConfig {
@@ -39,6 +42,22 @@ export const DEFAULT_VERIFY_CONFIG: VerifyConfig = {
   kickOnTimeout: true,
 };
 
+export function normalizeExtraPrompt(value: unknown): string {
+  if (typeof value !== "string") return "";
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  return Array.from(trimmed).slice(0, MAX_EXTRA_PROMPT_LENGTH).join("");
+}
+
+export function resolveVerifyPrompt(
+  basePrompt: string,
+  groupCfg: VerifyGroupConfig | undefined,
+): string {
+  const extra = String(groupCfg?.extraPrompt || "").trim();
+  if (!extra) return basePrompt;
+  return `${basePrompt}\n${extra}`;
+}
+
 export function normalizeVerifyMode(value: unknown): VerifyMode {
   const v = String(value || "").trim();
   if (v === "number" || v === "数字") return "number";
@@ -52,6 +71,7 @@ function normalizeVerifyGroup(raw: any): VerifyGroupConfig {
     groupId: groupId > 0 ? groupId : 0,
     enabled: raw?.enabled === true,
     mode: normalizeVerifyMode(raw?.mode),
+    extraPrompt: normalizeExtraPrompt(raw?.extraPrompt ?? raw?.extra_prompt),
   };
 }
 
@@ -113,7 +133,7 @@ export function getGroupVerifyConfig(
 ): VerifyGroupConfig {
   const found = config.groups.find((g) => g.groupId === groupId);
   if (found) return found;
-  return { groupId, enabled: false, mode: "reaction" };
+  return { groupId, enabled: false, mode: "reaction", extraPrompt: "" };
 }
 
 export function upsertGroupVerifyConfig(
@@ -123,14 +143,26 @@ export function upsertGroupVerifyConfig(
 ): VerifyConfig {
   const idx = config.groups.findIndex((g) => g.groupId === groupId);
   const next = { ...config };
+  const normalizedPatch: Partial<Omit<VerifyGroupConfig, "groupId">> = {
+    ...patch,
+  };
+  if (patch.extraPrompt !== undefined) {
+    normalizedPatch.extraPrompt = normalizeExtraPrompt(patch.extraPrompt);
+  }
   if (idx >= 0) {
     next.groups = config.groups.map((g, i) =>
-      i === idx ? { ...g, ...patch } : g,
+      i === idx ? { ...g, ...normalizedPatch } : g,
     );
   } else {
     next.groups = [
       ...config.groups,
-      { groupId, enabled: false, mode: "reaction", ...patch },
+      {
+        groupId,
+        enabled: false,
+        mode: "reaction",
+        extraPrompt: "",
+        ...normalizedPatch,
+      },
     ];
   }
   return next;

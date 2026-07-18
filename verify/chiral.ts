@@ -1,5 +1,9 @@
 import type { MiokiContext } from "mioki";
-import type { VerifyConfig } from "./config";
+import {
+  resolveVerifyPrompt,
+  type VerifyConfig,
+  type VerifyGroupConfig,
+} from "./config";
 import type { PendingVerify } from "./types";
 
 interface ChiralCaptcha {
@@ -43,6 +47,7 @@ async function fetchChiralCaptcha(
 export async function prepareChiral(
   ctx: MiokiContext,
   cfg: VerifyConfig,
+  groupCfg: VerifyGroupConfig,
   p: PendingVerify,
 ): Promise<boolean> {
   const bot = ctx.pickBot(p.selfId);
@@ -51,10 +56,11 @@ export async function prepareChiral(
     const captcha = await fetchChiralCaptcha(cfg.chiralApiUrl, cfg.chiralDifficulty);
     p.requiredRegions = captcha.regions;
     p.matchedRegions = new Set<string>();
-    const prompt = cfg.chiralPrompt.replace(
+    const basePrompt = cfg.chiralPrompt.replace(
       "{count}",
       String(captcha.regions.length),
     );
+    const prompt = resolveVerifyPrompt(basePrompt, groupCfg);
     await bot.sendGroupMsg(p.groupId, [
       ctx.segment.at(String(p.userId)),
       ctx.segment.text(` ${prompt}`),

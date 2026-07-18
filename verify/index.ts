@@ -204,12 +204,12 @@ export function createVerifyController(
       const delay = skipDelay ? 0 : Math.max(0, cfg.reactionDelayMs);
       entry.delayTimer = setTimeout(() => {
         entry.delayTimer = null;
-        void sendReactionPrompt(ctx, cfg, entry);
+        void sendReactionPrompt(ctx, cfg, groupCfg, entry);
       }, delay);
     } else if (mode === "number") {
-      void sendNumberPrompt(ctx, cfg, entry);
+      void sendNumberPrompt(ctx, cfg, groupCfg, entry);
     } else if (mode === "chiral") {
-      const ok = await prepareChiral(ctx, cfg, entry);
+      const ok = await prepareChiral(ctx, cfg, groupCfg, entry);
       if (!ok) {
         // 验证服务不可用时放行，避免误伤
         removePending(key);

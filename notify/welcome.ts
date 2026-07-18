@@ -75,8 +75,16 @@ async function flushBatch(options: {
   members: PendingMember[];
   promptInjections?: { content: string; title?: string }[];
 }): Promise<string> {
-  const { ctx, aiService, config, selfId, groupId, groupName, members, promptInjections } =
-    options;
+  const {
+    ctx,
+    aiService,
+    config,
+    selfId,
+    groupId,
+    groupName,
+    members,
+    promptInjections,
+  } = options;
   if (!members.length) return "";
 
   const names = members.map((m) => m.memberName || String(m.userId));
@@ -106,7 +114,7 @@ async function flushBatch(options: {
       groupId,
       send: true,
       instruction: [
-        `当前有 ${members.length} 位新成员同时入群，请一次性发送一段统一的欢迎语（不要逐个 @ 欢迎、不要重复点名）。`,
+        `当前有 ${members.length} 位新成员同时入群，请一次性发送一段统一的欢迎语（不要逐个 @ 欢迎、不要重复点名）不要长篇大论，精简即可。`,
         `新成员昵称：${userList}`,
         `新成员 QQ：${userIdList}`,
         `所在群：${groupName}`,
@@ -209,87 +217,47 @@ export function registerWelcomeHandler(
 ): () => void {
   const batches = getBatchMap();
 
-  const dispose = ctx.handle("notice.group.increase" as any, async (event: any) => {
-    const cfg = getConfig();
-    const selfId = Number(event?.self_id || ctx.self_id);
-    const groupId = Number(event?.group_id || 0);
-    const userId = Number(event?.user_id || 0);
-    if (!groupId || !userId) return;
-    if (userId === selfId) return;
+  const dispose = ctx.handle(
+    "notice.group.increase" as any,
+    async (event: any) => {
+      const cfg = getConfig();
+      const selfId = Number(event?.self_id || ctx.self_id);
+      const groupId = Number(event?.group_id || 0);
+      const userId = Number(event?.user_id || 0);
+      if (!groupId || !userId) return;
+      if (userId === selfId) return;
 
-    const groupName =
-      String(event?.group?.group_name || "").trim() || String(groupId);
+      const groupName =
+        String(event?.group?.group_name || "").trim() || String(groupId);
 
-    if (
-      shouldSuppress &&
-      (await shouldSuppress({ selfId, groupId, userId, groupName }))
-    ) {
-      return;
-    }
-
-    if (!cfg.welcome.enabled) return;
-
-    const batchWindowMs = Math.max(0, Number(cfg.welcome.batchWindowMs) || 0);
-
-    if (batchWindowMs === 0) {
-      const memberName = await resolveMemberName(ctx, groupId, userId, selfId);
-      const welcomeMessage = await flushBatch({
-        ctx,
-        aiService,
-        config: cfg,
-        selfId,
-        groupId,
-        groupName,
-        members: [{ userId, memberName }],
-      });
-      if (!welcomeMessage) return;
-      const bot = ctx.pickBot(selfId);
-      if (!bot) return;
-      try {
-        await bot.sendGroupMsg(groupId, [ctx.segment.text(welcomeMessage)]);
-      } catch (error) {
-        ctx.logger.warn(`发送入群欢迎失败: ${error}`);
+      if (
+        shouldSuppress &&
+        (await shouldSuppress({ selfId, groupId, userId, groupName }))
+      ) {
+        return;
       }
-      return;
-    }
 
-    const key = batchKey(selfId, groupId);
-    let state = batches.get(key);
-    if (!state) {
-      state = { members: [], timer: null, groupName };
-      batches.set(key, state);
-    }
-    if (groupName && groupName !== String(groupId)) {
-      state.groupName = groupName;
-    }
+      if (!cfg.welcome.enabled) return;
 
-    const memberName = await resolveMemberName(ctx, groupId, userId, selfId);
-    if (!state.members.some((m) => m.userId === userId)) {
-      state.members.push({ userId, memberName });
-    }
+      const batchWindowMs = Math.max(0, Number(cfg.welcome.batchWindowMs) || 0);
 
-    if (state.timer) {
-      return;
-    }
-
-    state.timer = setTimeout(async () => {
-      try {
-        const pending = state;
-        batches.delete(key);
-        if (!pending || !pending.members.length) return;
-
-        const currentConfig = getConfig();
+      if (batchWindowMs === 0) {
+        const memberName = await resolveMemberName(
+          ctx,
+          groupId,
+          userId,
+          selfId,
+        );
         const welcomeMessage = await flushBatch({
           ctx,
           aiService,
-          config: currentConfig,
+          config: cfg,
           selfId,
           groupId,
-          groupName: pending.groupName,
-          members: pending.members,
+          groupName,
+          members: [{ userId, memberName }],
         });
         if (!welcomeMessage) return;
-
         const bot = ctx.pickBot(selfId);
         if (!bot) return;
         try {
@@ -297,11 +265,59 @@ export function registerWelcomeHandler(
         } catch (error) {
           ctx.logger.warn(`发送入群欢迎失败: ${error}`);
         }
-      } catch (error) {
-        ctx.logger.error(`admin welcome 批次处理失败: ${error}`);
+        return;
       }
-    }, batchWindowMs);
-  });
+
+      const key = batchKey(selfId, groupId);
+      let state = batches.get(key);
+      if (!state) {
+        state = { members: [], timer: null, groupName };
+        batches.set(key, state);
+      }
+      if (groupName && groupName !== String(groupId)) {
+        state.groupName = groupName;
+      }
+
+      const memberName = await resolveMemberName(ctx, groupId, userId, selfId);
+      if (!state.members.some((m) => m.userId === userId)) {
+        state.members.push({ userId, memberName });
+      }
+
+      if (state.timer) {
+        return;
+      }
+
+      state.timer = setTimeout(async () => {
+        try {
+          const pending = state;
+          batches.delete(key);
+          if (!pending || !pending.members.length) return;
+
+          const currentConfig = getConfig();
+          const welcomeMessage = await flushBatch({
+            ctx,
+            aiService,
+            config: currentConfig,
+            selfId,
+            groupId,
+            groupName: pending.groupName,
+            members: pending.members,
+          });
+          if (!welcomeMessage) return;
+
+          const bot = ctx.pickBot(selfId);
+          if (!bot) return;
+          try {
+            await bot.sendGroupMsg(groupId, [ctx.segment.text(welcomeMessage)]);
+          } catch (error) {
+            ctx.logger.warn(`发送入群欢迎失败: ${error}`);
+          }
+        } catch (error) {
+          ctx.logger.error(`admin welcome 批次处理失败: ${error}`);
+        }
+      }, batchWindowMs);
+    },
+  );
 
   return () => {
     for (const state of batches.values()) {

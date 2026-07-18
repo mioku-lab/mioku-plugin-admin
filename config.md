@@ -74,9 +74,37 @@ fields:
 
   - key: verify.groups
     label: 各群入群验证配置
-    type: json
-    description: 每个群的验证配置数组，元素形如 {"groupId":123,"enabled":true,"mode":"reaction"}。推荐通过 /开启验证、/关闭验证、/切换验证模式 指令管理，直接编辑需填写合法 JSON 数组。
-    placeholder: '[]'
+    type: array
+    description: 
+    itemFields:
+      - key: groupId
+        label: 群号
+        type: number
+        description: 该配置对应的 QQ 群号，每个群只能出现一次
+        placeholder: 123456789
+
+      - key: enabled
+        label: 启用验证
+        type: switch
+        description: 是否对该群开启入群验证
+
+      - key: mode
+        label: 验证模式
+        type: select
+        options:
+          - value: reaction
+            label: 回应
+          - value: number
+            label: 数字
+          - value: chiral
+            label: 手性碳
+        description: 该群入群验证使用的模式
+
+      - key: extraPrompt
+        label: 群额外入群提示词
+        type: textarea
+        description: 拼接在该群默认验证提示词之后发送，上限 50 字。可在群里直接用 /入群提示 xxx 设置或清空。
+        placeholder: 例：本群禁止复读机器人消息，请自觉
 
   - key: verify.reactionEmojiId
     label: 回应模式表态表情ID

@@ -2,6 +2,8 @@ import type { MiokiContext } from "mioki";
 import { getAtUserId, getMemberRole } from "../config";
 import {
   getGroupVerifyConfig,
+  MAX_EXTRA_PROMPT_LENGTH,
+  normalizeExtraPrompt,
   normalizeVerifyMode,
   upsertGroupVerifyConfig,
   type VerifyConfig,
@@ -44,7 +46,9 @@ export function registerVerifyCommands(options: VerifyCommandOptions) {
       text.startsWith("/绕过验证") ||
       text.startsWith("#绕过验证") ||
       text.startsWith("/重新验证") ||
-      text.startsWith("#重新验证");
+      text.startsWith("#重新验证") ||
+      text.startsWith("/入群提示") ||
+      text.startsWith("#入群提示");
 
     try {
       const selfId = event.self_id;
@@ -236,6 +240,48 @@ export function registerVerifyCommands(options: VerifyCommandOptions) {
             error: err,
           });
         }
+        return;
+      }
+
+      // /入群提示 xxx
+      if (text.startsWith("/入群提示") || text.startsWith("#入群提示")) {
+        if (!(await ensureAdminPermission())) return;
+
+        const rawArg = text.replace(/^[/#]入群提示\s*/, "").trim();
+        const current = getVerifyConfig();
+        const groupCfg = getGroupVerifyConfig(current, groupId);
+
+        if (!rawArg) {
+          if (!groupCfg.extraPrompt) {
+            await event.reply("本群还没设置额外的入群提示词哦～", true);
+            return;
+          }
+          await setVerifyConfig(
+            upsertGroupVerifyConfig(current, groupId, { extraPrompt: "" }),
+          );
+          await event.reply("已清空本群额外入群提示词～", true);
+          return;
+        }
+
+        const argLength = Array.from(rawArg).length;
+        if (argLength > MAX_EXTRA_PROMPT_LENGTH) {
+          await replyAdminErrorNotice({
+            ctx,
+            event,
+            instruction: `用户想设置本群入群提示词，但内容长度 ${argLength} 超过了上限 ${MAX_EXTRA_PROMPT_LENGTH} 字，请明确告诉用户最多 ${MAX_EXTRA_PROMPT_LENGTH} 字。`,
+            fallbackMessage: `最多 ${MAX_EXTRA_PROMPT_LENGTH} 字哦～当前 ${argLength} 字`,
+          });
+          return;
+        }
+
+        const next = upsertGroupVerifyConfig(current, groupId, {
+          extraPrompt: normalizeExtraPrompt(rawArg),
+        });
+        await setVerifyConfig(next);
+        await event.reply(
+          `已设置本群额外入群提示词：${normalizeExtraPrompt(rawArg)}`,
+          true,
+        );
         return;
       }
     } catch (err) {
