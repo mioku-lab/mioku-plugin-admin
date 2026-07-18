@@ -7,7 +7,7 @@ export interface VerifyGroupConfig {
   enabled: boolean;
   mode: VerifyMode;
   customPrompt: string;
-  promptImages: string[];
+  promptImage: string;
 }
 
 export interface VerifyConfig {
@@ -50,25 +50,16 @@ export function normalizeCustomPrompt(value: unknown): string {
   return Array.from(trimmed).slice(0, MAX_CUSTOM_PROMPT_LENGTH).join("");
 }
 
-export function normalizePromptImages(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  const seen = new Set<string>();
-  const result: string[] = [];
-  for (const item of value) {
-    if (typeof item !== "string") continue;
-    const name = item.trim();
-    if (!name || seen.has(name)) continue;
-    seen.add(name);
-    result.push(name);
-  }
-  return result;
+export function normalizePromptImage(value: unknown): string {
+  if (typeof value !== "string") return "";
+  return value.trim();
 }
 
 export function hasCustomPrompt(groupCfg: VerifyGroupConfig | undefined): boolean {
   if (!groupCfg) return false;
   return (
     Boolean(groupCfg.customPrompt && groupCfg.customPrompt.trim()) ||
-    groupCfg.promptImages.length > 0
+    Boolean(groupCfg.promptImage && groupCfg.promptImage.trim())
   );
 }
 
@@ -81,6 +72,11 @@ export function normalizeVerifyMode(value: unknown): VerifyMode {
 
 function normalizeVerifyGroup(raw: any): VerifyGroupConfig {
   const groupId = Number(raw?.groupId || raw?.group_id || 0);
+  const promptImageRaw =
+    raw?.promptImage ??
+    raw?.prompt_image ??
+    (Array.isArray(raw?.promptImages) ? raw.promptImages[0] : undefined) ??
+    (Array.isArray(raw?.images) ? raw.images[0] : undefined);
   return {
     groupId: groupId > 0 ? groupId : 0,
     enabled: raw?.enabled === true,
@@ -88,9 +84,7 @@ function normalizeVerifyGroup(raw: any): VerifyGroupConfig {
     customPrompt: normalizeCustomPrompt(
       raw?.customPrompt ?? raw?.custom_prompt ?? raw?.extraPrompt,
     ),
-    promptImages: normalizePromptImages(
-      raw?.promptImages ?? raw?.prompt_images ?? raw?.images,
-    ),
+    promptImage: normalizePromptImage(promptImageRaw),
   };
 }
 
@@ -157,7 +151,7 @@ export function getGroupVerifyConfig(
     enabled: false,
     mode: "reaction",
     customPrompt: "",
-    promptImages: [],
+    promptImage: "",
   };
 }
 
@@ -174,8 +168,8 @@ export function upsertGroupVerifyConfig(
   if (patch.customPrompt !== undefined) {
     normalizedPatch.customPrompt = normalizeCustomPrompt(patch.customPrompt);
   }
-  if (patch.promptImages !== undefined) {
-    normalizedPatch.promptImages = normalizePromptImages(patch.promptImages);
+  if (patch.promptImage !== undefined) {
+    normalizedPatch.promptImage = normalizePromptImage(patch.promptImage);
   }
   if (idx >= 0) {
     next.groups = config.groups.map((g, i) =>
@@ -189,7 +183,7 @@ export function upsertGroupVerifyConfig(
         enabled: false,
         mode: "reaction",
         customPrompt: "",
-        promptImages: [],
+        promptImage: "",
         ...normalizedPatch,
       },
     ];

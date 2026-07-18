@@ -367,15 +367,16 @@ export function createVerifyController(
     if (prompt) {
       segments.push(ctx.segment.text(prompt));
     }
-    for (const filename of groupCfg.promptImages) {
+    const filename = String(groupCfg.promptImage || "").trim();
+    if (filename) {
       const imagePath = getGroupPromptImagePath(info.groupId, filename);
       if (!existsSync(imagePath)) {
         ctx.logger.warn(
           `admin verify 自定义入群提示图片缺失: ${imagePath}`,
         );
-        continue;
+      } else {
+        segments.push(ctx.segment.image(`file://${imagePath}`));
       }
-      segments.push(ctx.segment.image(`file://${imagePath}`));
     }
     if (!segments.length) return false;
     try {
