@@ -1,12 +1,13 @@
 export type VerifyMode = "reaction" | "number" | "chiral";
 
-export const MAX_EXTRA_PROMPT_LENGTH = 50;
+export const MAX_CUSTOM_PROMPT_LENGTH = 50;
 
 export interface VerifyGroupConfig {
   groupId: number;
   enabled: boolean;
   mode: VerifyMode;
-  extraPrompt: string;
+  customPrompt: string;
+  promptImages: string[];
 }
 
 export interface VerifyConfig {
@@ -42,20 +43,33 @@ export const DEFAULT_VERIFY_CONFIG: VerifyConfig = {
   kickOnTimeout: true,
 };
 
-export function normalizeExtraPrompt(value: unknown): string {
+export function normalizeCustomPrompt(value: unknown): string {
   if (typeof value !== "string") return "";
   const trimmed = value.trim();
   if (!trimmed) return "";
-  return Array.from(trimmed).slice(0, MAX_EXTRA_PROMPT_LENGTH).join("");
+  return Array.from(trimmed).slice(0, MAX_CUSTOM_PROMPT_LENGTH).join("");
 }
 
-export function resolveVerifyPrompt(
-  basePrompt: string,
-  groupCfg: VerifyGroupConfig | undefined,
-): string {
-  const extra = String(groupCfg?.extraPrompt || "").trim();
-  if (!extra) return basePrompt;
-  return `${basePrompt}\n${extra}`;
+export function normalizePromptImages(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const item of value) {
+    if (typeof item !== "string") continue;
+    const name = item.trim();
+    if (!name || seen.has(name)) continue;
+    seen.add(name);
+    result.push(name);
+  }
+  return result;
+}
+
+export function hasCustomPrompt(groupCfg: VerifyGroupConfig | undefined): boolean {
+  if (!groupCfg) return false;
+  return (
+    Boolean(groupCfg.customPrompt && groupCfg.customPrompt.trim()) ||
+    groupCfg.promptImages.length > 0
+  );
 }
 
 export function normalizeVerifyMode(value: unknown): VerifyMode {
@@ -71,7 +85,12 @@ function normalizeVerifyGroup(raw: any): VerifyGroupConfig {
     groupId: groupId > 0 ? groupId : 0,
     enabled: raw?.enabled === true,
     mode: normalizeVerifyMode(raw?.mode),
-    extraPrompt: normalizeExtraPrompt(raw?.extraPrompt ?? raw?.extra_prompt),
+    customPrompt: normalizeCustomPrompt(
+      raw?.customPrompt ?? raw?.custom_prompt ?? raw?.extraPrompt,
+    ),
+    promptImages: normalizePromptImages(
+      raw?.promptImages ?? raw?.prompt_images ?? raw?.images,
+    ),
   };
 }
 
@@ -133,7 +152,13 @@ export function getGroupVerifyConfig(
 ): VerifyGroupConfig {
   const found = config.groups.find((g) => g.groupId === groupId);
   if (found) return found;
-  return { groupId, enabled: false, mode: "reaction", extraPrompt: "" };
+  return {
+    groupId,
+    enabled: false,
+    mode: "reaction",
+    customPrompt: "",
+    promptImages: [],
+  };
 }
 
 export function upsertGroupVerifyConfig(
@@ -146,8 +171,11 @@ export function upsertGroupVerifyConfig(
   const normalizedPatch: Partial<Omit<VerifyGroupConfig, "groupId">> = {
     ...patch,
   };
-  if (patch.extraPrompt !== undefined) {
-    normalizedPatch.extraPrompt = normalizeExtraPrompt(patch.extraPrompt);
+  if (patch.customPrompt !== undefined) {
+    normalizedPatch.customPrompt = normalizeCustomPrompt(patch.customPrompt);
+  }
+  if (patch.promptImages !== undefined) {
+    normalizedPatch.promptImages = normalizePromptImages(patch.promptImages);
   }
   if (idx >= 0) {
     next.groups = config.groups.map((g, i) =>
@@ -160,7 +188,8 @@ export function upsertGroupVerifyConfig(
         groupId,
         enabled: false,
         mode: "reaction",
-        extraPrompt: "",
+        customPrompt: "",
+        promptImages: [],
         ...normalizedPatch,
       },
     ];

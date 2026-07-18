@@ -113,6 +113,19 @@ export function extractImageUrl(message: RecvElement[]): string | undefined {
   return undefined;
 }
 
+export function extractImageUrls(message: RecvElement[]): string[] {
+  if (!Array.isArray(message)) return [];
+  const urls: string[] = [];
+  for (const seg of message) {
+    if (seg.type === "image") {
+      const imageSeg = seg as RecvImageElement;
+      const url = String(imageSeg.url || imageSeg.file || "").trim();
+      if (url) urls.push(url);
+    }
+  }
+  return urls;
+}
+
 // 从消息中提取被@的人的QQ号
 export function getAtUserId(message: RecvElement[]): number | undefined {
   if (!Array.isArray(message)) return undefined;

@@ -74,6 +74,12 @@ async function flushBatch(options: {
   groupName: string;
   members: PendingMember[];
   promptInjections?: { content: string; title?: string }[];
+  tryCustomPrompt?: (info: {
+    selfId: number;
+    groupId: number;
+    userId: number;
+    groupName: string;
+  }) => Promise<boolean>;
 }): Promise<string> {
   const {
     ctx,
@@ -84,8 +90,23 @@ async function flushBatch(options: {
     groupName,
     members,
     promptInjections,
+    tryCustomPrompt,
   } = options;
   if (!members.length) return "";
+
+  if (tryCustomPrompt) {
+    let anyCustom = false;
+    for (const m of members) {
+      const handled = await tryCustomPrompt({
+        selfId,
+        groupId,
+        userId: m.userId,
+        groupName,
+      });
+      if (handled) anyCustom = true;
+    }
+    if (anyCustom) return "";
+  }
 
   const names = members.map((m) => m.memberName || String(m.userId));
   const userList = names.join("、");
@@ -140,6 +161,12 @@ async function sendSingleWelcome(options: {
   userId: number;
   memberName: string;
   promptInjections?: { content: string; title?: string }[];
+  tryCustomPrompt?: (info: {
+    selfId: number;
+    groupId: number;
+    userId: number;
+    groupName: string;
+  }) => Promise<boolean>;
 }): Promise<void> {
   const {
     ctx,
@@ -151,6 +178,7 @@ async function sendSingleWelcome(options: {
     userId,
     memberName,
     promptInjections,
+    tryCustomPrompt,
   } = options;
   const welcomeMessage = await flushBatch({
     ctx,
@@ -161,6 +189,7 @@ async function sendSingleWelcome(options: {
     groupName,
     members: [{ userId, memberName }],
     promptInjections,
+    tryCustomPrompt,
   });
   if (!welcomeMessage) return;
   const bot = ctx.pickBot(selfId);
@@ -182,6 +211,12 @@ export async function triggerSingleWelcome(options: {
   userId: number;
   memberName?: string;
   promptInjections?: { content: string; title?: string }[];
+  tryCustomPrompt?: (info: {
+    selfId: number;
+    groupId: number;
+    userId: number;
+    groupName: string;
+  }) => Promise<boolean>;
 }): Promise<void> {
   const memberName =
     options.memberName ||
@@ -201,6 +236,7 @@ export async function triggerSingleWelcome(options: {
     userId: options.userId,
     memberName,
     promptInjections: options.promptInjections,
+    tryCustomPrompt: options.tryCustomPrompt,
   });
 }
 
@@ -214,6 +250,12 @@ export function registerWelcomeHandler(
     userId: number;
     groupName: string;
   }) => Promise<boolean> | boolean,
+  tryCustomPrompt?: (info: {
+    selfId: number;
+    groupId: number;
+    userId: number;
+    groupName: string;
+  }) => Promise<boolean>,
 ): () => void {
   const batches = getBatchMap();
 
@@ -302,6 +344,7 @@ export function registerWelcomeHandler(
             groupId,
             groupName: pending.groupName,
             members: pending.members,
+            tryCustomPrompt,
           });
           if (!welcomeMessage) return;
 

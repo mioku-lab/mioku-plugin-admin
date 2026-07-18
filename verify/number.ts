@@ -1,9 +1,5 @@
 import type { MiokiContext } from "mioki";
-import {
-  resolveVerifyPrompt,
-  type VerifyConfig,
-  type VerifyGroupConfig,
-} from "./config";
+import type { VerifyConfig } from "./config";
 import type { PendingVerify } from "./types";
 
 function genNumberQuestion(): { question: string; answer: number } {
@@ -23,15 +19,13 @@ function extractNumbers(text: string): number[] {
 export async function sendNumberPrompt(
   ctx: MiokiContext,
   cfg: VerifyConfig,
-  groupCfg: VerifyGroupConfig,
   p: PendingVerify,
 ): Promise<void> {
   const bot = ctx.pickBot(p.selfId);
   if (!bot) return;
   const { question, answer } = genNumberQuestion();
   p.numberAnswer = answer;
-  const basePrompt = cfg.numberPrompt.replace("{question}", question);
-  const prompt = resolveVerifyPrompt(basePrompt, groupCfg);
+  const prompt = cfg.numberPrompt.replace("{question}", question);
   try {
     await bot.sendGroupMsg(p.groupId, [
       ctx.segment.at(String(p.userId)),

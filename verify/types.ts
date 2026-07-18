@@ -42,5 +42,6 @@ export interface VerifyController {
   handleMemberJoin(info: MemberJoinInfo): Promise<boolean>;
   restartVerification(info: MemberJoinInfo): Promise<boolean>;
   bypassVerification(info: MemberJoinInfo): Promise<void>;
+  trySendCustomWelcome(info: MemberJoinInfo): Promise<boolean>;
   dispose(): void;
 }

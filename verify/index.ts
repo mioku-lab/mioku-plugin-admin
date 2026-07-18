@@ -1,7 +1,12 @@
 import type { MiokiContext } from "mioki";
+import { existsSync } from "fs";
 import { getMemberRole } from "../config";
 import { resolveMemberName, triggerSingleWelcome } from "../notify/welcome";
-import { getGroupVerifyConfig, upsertGroupVerifyConfig } from "./config";
+import {
+  getGroupVerifyConfig,
+  hasCustomPrompt,
+  upsertGroupVerifyConfig,
+} from "./config";
 import type {
   MemberJoinInfo,
   PendingVerify,
@@ -12,6 +17,7 @@ import { clearTimers, getPendingMap, pendingKey } from "./state";
 import { isReactionPass, sendReactionPrompt } from "./reaction";
 import { isNumberAnswerCorrect, sendNumberPrompt } from "./number";
 import { checkChiralAnswer, prepareChiral } from "./chiral";
+import { getGroupPromptImagePath } from "../utils/prompt-image-store";
 
 const PASS_REACTION_EMOJI_ID = "144";
 
@@ -91,6 +97,13 @@ export function createVerifyController(
 
     if (!getWelcomeEnabled()) return;
     try {
+      const customSent = await trySendCustomWelcome({
+        selfId: p.selfId,
+        groupId: p.groupId,
+        userId: p.userId,
+        groupName: p.groupName,
+      });
+      if (customSent) return;
       await triggerSingleWelcome({
         ctx,
         aiService,
@@ -204,12 +217,12 @@ export function createVerifyController(
       const delay = skipDelay ? 0 : Math.max(0, cfg.reactionDelayMs);
       entry.delayTimer = setTimeout(() => {
         entry.delayTimer = null;
-        void sendReactionPrompt(ctx, cfg, groupCfg, entry);
+        void sendReactionPrompt(ctx, cfg, entry);
       }, delay);
     } else if (mode === "number") {
-      void sendNumberPrompt(ctx, cfg, groupCfg, entry);
+      void sendNumberPrompt(ctx, cfg, entry);
     } else if (mode === "chiral") {
-      const ok = await prepareChiral(ctx, cfg, groupCfg, entry);
+      const ok = await prepareChiral(ctx, cfg, entry);
       if (!ok) {
         // 验证服务不可用时放行，避免误伤
         removePending(key);
@@ -344,10 +357,41 @@ export function createVerifyController(
     removePending(pendingKey(info.selfId, info.groupId, info.userId));
   }
 
+  async function trySendCustomWelcome(info: MemberJoinInfo): Promise<boolean> {
+    const groupCfg = getGroupVerifyConfig(getVerifyConfig(), info.groupId);
+    if (!hasCustomPrompt(groupCfg)) return false;
+    const bot = ctx.pickBot(info.selfId);
+    if (!bot) return false;
+    const segments: any[] = [];
+    const prompt = String(groupCfg.customPrompt || "").trim();
+    if (prompt) {
+      segments.push(ctx.segment.text(prompt));
+    }
+    for (const filename of groupCfg.promptImages) {
+      const imagePath = getGroupPromptImagePath(info.groupId, filename);
+      if (!existsSync(imagePath)) {
+        ctx.logger.warn(
+          `admin verify 自定义入群提示图片缺失: ${imagePath}`,
+        );
+        continue;
+      }
+      segments.push(ctx.segment.image(`file://${imagePath}`));
+    }
+    if (!segments.length) return false;
+    try {
+      await bot.sendGroupMsg(info.groupId, segments);
+      return true;
+    } catch (err) {
+      ctx.logger.error(`admin verify 发送自定义入群提示失败: ${err}`);
+      return false;
+    }
+  }
+
   return {
     handleMemberJoin: startVerification,
     restartVerification,
     bypassVerification,
+    trySendCustomWelcome,
     dispose() {
       for (const p of pending.values()) clearTimers(p);
       pending.clear();

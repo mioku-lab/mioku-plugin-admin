@@ -1,15 +1,20 @@
 import type { MiokiContext } from "mioki";
-import { getAtUserId, getMemberRole } from "../config";
+import { extractImageUrls, getAtUserId, getMemberRole } from "../config";
 import {
   getGroupVerifyConfig,
-  MAX_EXTRA_PROMPT_LENGTH,
-  normalizeExtraPrompt,
+  hasCustomPrompt,
+  MAX_CUSTOM_PROMPT_LENGTH,
+  normalizeCustomPrompt,
   normalizeVerifyMode,
   upsertGroupVerifyConfig,
   type VerifyConfig,
 } from "../verify/config";
 import { replyAdminErrorNotice } from "./notice";
 import type { VerifyController } from "../verify/types";
+import {
+  pruneGroupPromptImages,
+  saveRemoteImageAsPrompt,
+} from "../utils/prompt-image-store";
 
 export interface VerifyCommandOptions {
   ctx: MiokiContext;
@@ -244,44 +249,100 @@ export function registerVerifyCommands(options: VerifyCommandOptions) {
       }
 
       // /入群提示 xxx
+      // /入群提示 关闭
+      // /入群提示（带图片）— 仅图片也可
       if (text.startsWith("/入群提示") || text.startsWith("#入群提示")) {
         if (!(await ensureAdminPermission())) return;
 
         const rawArg = text.replace(/^[/#]入群提示\s*/, "").trim();
         const current = getVerifyConfig();
         const groupCfg = getGroupVerifyConfig(current, groupId);
+        const imageUrls = extractImageUrls(event.message);
 
-        if (!rawArg) {
-          if (!groupCfg.extraPrompt) {
-            await event.reply("本群还没设置额外的入群提示词哦～", true);
+        if (rawArg === "关闭" || rawArg === "清空" || rawArg === "关") {
+          if (!hasCustomPrompt(groupCfg)) {
+            await event.reply("本群还没设置自定义入群提示哦～", true);
             return;
           }
-          await setVerifyConfig(
-            upsertGroupVerifyConfig(current, groupId, { extraPrompt: "" }),
+          const removedFiles = [...groupCfg.promptImages];
+          const next = upsertGroupVerifyConfig(current, groupId, {
+            customPrompt: "",
+            promptImages: [],
+          });
+          await setVerifyConfig(next);
+          await pruneGroupPromptImages(groupId, []).catch(() => {});
+          ctx.logger.info(
+            `admin verify 关闭群 ${groupId} 自定义入群提示，清理图片 ${removedFiles.join(", ")}`,
           );
-          await event.reply("已清空本群额外入群提示词～", true);
+          await event.reply("已关闭本群自定义入群提示～", true);
           return;
         }
 
-        const argLength = Array.from(rawArg).length;
-        if (argLength > MAX_EXTRA_PROMPT_LENGTH) {
-          await replyAdminErrorNotice({
-            ctx,
-            event,
-            instruction: `用户想设置本群入群提示词，但内容长度 ${argLength} 超过了上限 ${MAX_EXTRA_PROMPT_LENGTH} 字，请明确告诉用户最多 ${MAX_EXTRA_PROMPT_LENGTH} 字。`,
-            fallbackMessage: `最多 ${MAX_EXTRA_PROMPT_LENGTH} 字哦～当前 ${argLength} 字`,
-          });
+        if (!rawArg && !imageUrls.length) {
+          if (!hasCustomPrompt(groupCfg)) {
+            await event.reply(
+              "用法：/入群提示 xxx（最多 50 字），可附带图片一起发送；/入群提示 关闭 关闭自定义提示～",
+              true,
+            );
+            return;
+          }
+          const summary = [
+            `已开启本群自定义入群提示`,
+            groupCfg.customPrompt
+              ? `文字：${groupCfg.customPrompt}`
+              : "文字：（未设置）",
+            `图片：${groupCfg.promptImages.length} 张`,
+          ].join("\n");
+          await event.reply(summary, true);
           return;
         }
+
+        let nextPrompt = groupCfg.customPrompt;
+        if (rawArg) {
+          const argLength = Array.from(rawArg).length;
+          if (argLength > MAX_CUSTOM_PROMPT_LENGTH) {
+            await replyAdminErrorNotice({
+              ctx,
+              event,
+              instruction: `用户想设置本群入群提示，但内容长度 ${argLength} 超过了上限 ${MAX_CUSTOM_PROMPT_LENGTH} 字，请明确告诉用户最多 ${MAX_CUSTOM_PROMPT_LENGTH} 字。`,
+              fallbackMessage: `最多 ${MAX_CUSTOM_PROMPT_LENGTH} 字哦～当前 ${argLength} 字`,
+            });
+            return;
+          }
+          nextPrompt = normalizeCustomPrompt(rawArg);
+        }
+
+        const saved: string[] = [];
+        const failed: number = imageUrls.length;
+        for (const url of imageUrls) {
+          const savedImage = await saveRemoteImageAsPrompt(groupId, url);
+          if (savedImage) saved.push(savedImage.filename);
+        }
+
+        const nextImages = imageUrls.length
+          ? [...groupCfg.promptImages, ...saved]
+          : groupCfg.promptImages;
 
         const next = upsertGroupVerifyConfig(current, groupId, {
-          extraPrompt: normalizeExtraPrompt(rawArg),
+          customPrompt: nextPrompt,
+          promptImages: nextImages,
         });
         await setVerifyConfig(next);
-        await event.reply(
-          `已设置本群额外入群提示词：${normalizeExtraPrompt(rawArg)}`,
-          true,
-        );
+        await pruneGroupPromptImages(groupId, nextImages).catch(() => {});
+
+        const lines: string[] = ["已更新本群自定义入群提示～"];
+        if (rawArg) lines.push(`文字：${nextPrompt}`);
+        else if (groupCfg.customPrompt)
+          lines.push(`文字（保持）：${groupCfg.customPrompt}`);
+        if (imageUrls.length) {
+          lines.push(
+            saved.length
+              ? `新增图片 ${saved.length} 张${failed > saved.length ? `，${failed - saved.length} 张保存失败` : ""}`
+              : `图片保存失败 ${failed} 张，请稍后重试`,
+          );
+        }
+        lines.push(`当前共 ${nextImages.length} 张图片`);
+        await event.reply(lines.join("\n"), true);
         return;
       }
     } catch (err) {

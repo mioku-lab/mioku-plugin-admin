@@ -81,6 +81,7 @@ export default definePlugin({
       aiService,
       getConfig,
       (info) => verifyController.handleMemberJoin(info),
+      (info) => verifyController.trySendCustomWelcome(info),
     );
 
     // 注册入群验证指令

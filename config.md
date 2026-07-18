@@ -100,11 +100,17 @@ fields:
             label: 手性碳
         description: 该群入群验证使用的模式
 
-      - key: extraPrompt
-        label: 群额外入群提示词
+      - key: customPrompt
+        label: 群自定义入群提示词
         type: textarea
-        description: 拼接在该群默认验证提示词之后发送，上限 50 字。可在群里直接用 /入群提示 xxx 设置或清空。
-        placeholder: 例：本群禁止复读机器人消息，请自觉
+        description: 一旦设置该群将跳过 AI 生成欢迎，验证通过后直接发送这段文字（可附带本地图片一起）。上限 50 字，建议在群里直接用 /入群提示 xxx 设置或 /入群提示 关闭 关闭。
+        placeholder: 例：欢迎来到本群，请先看群公告～
+
+      - key: promptImages
+        label: 群自定义入群提示图片
+        type: textarea
+        description: 图片文件名列表（保存在 data/admin/<群号>/prompt-images/），与文字一起发送。在群里发送 /入群提示 xxx 时附带图片即可追加；/入群提示 关闭 会一并清空图片。
+        placeholder: 例：["prompt-l8t9a-3f2c.png"]
 
   - key: verify.reactionEmojiId
     label: 回应模式表态表情ID
