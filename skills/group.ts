@@ -61,14 +61,14 @@ const groupAdminSkill: AISkill = {
   tools: [
     {
       name: "manage_member",
-      description:
-        "管理群成员：踢人(kick)、禁言(mute)、解除禁言(unmute)、设为管理员(set_admin)、取消管理员(unset_admin)、设置某成员头衔(set_title)、设置自己头衔(set_self_title)。",
+      description: "管理群成员",
       parameters: {
         type: "object",
         properties: {
           action: {
             type: "string",
-            description: "要执行的动作",
+            description:
+              "要执行的动作：踢人，禁言，解禁，设置/取消管理，设置头衔",
             enum: [
               "kick",
               "mute",
@@ -81,8 +81,7 @@ const groupAdminSkill: AISkill = {
           },
           user_id: {
             type: "number",
-            description:
-              "目标成员QQ号。set_self_title 不需要；其他动作必填。",
+            description: "目标成员QQ号。set_self_title 不需要；其他动作必填",
           },
           duration: {
             type: "number",
@@ -192,7 +191,11 @@ const groupAdminSkill: AISkill = {
               return { error: `未知的 action: ${action}` };
           }
         } catch (err) {
-          logAdminSkillError(runtimeCtx, `admin_group.manage_member.${action}`, err);
+          logAdminSkillError(
+            runtimeCtx,
+            `admin_group.manage_member.${action}`,
+            err,
+          );
           return { error: `执行 ${action} 失败: ${err}` };
         }
       },
@@ -200,7 +203,7 @@ const groupAdminSkill: AISkill = {
     {
       name: "manage_group",
       description:
-        "管理群本身或批量撤回消息：开启/关闭全体禁言(set_whole_ban/unset_whole_ban)、改群名(set_group_name)、改Bot在群里的名片(set_self_card)、改群头像(set_group_avatar)、撤回一条或多条消息(recall_messages，需要 message_ids 数组)。",
+        "管理群本身或批量撤回消息：开启/关闭全体禁言、改群名、改Bot在群里的名片、改群头像、撤回一条或多条消息",
       parameters: {
         type: "object",
         properties: {
@@ -226,8 +229,7 @@ const groupAdminSkill: AISkill = {
           },
           message_id: {
             type: "number",
-            description:
-              "包含图片的消息 message_id，仅 set_group_avatar 需要",
+            description: "包含图片的消息 message_id，仅 set_group_avatar 需要",
           },
           message_ids: {
             type: "array",
@@ -260,7 +262,8 @@ const groupAdminSkill: AISkill = {
               return { success: true, message: "当前群已关闭全体禁言" };
             case "set_group_name": {
               const groupName = String(args?.group_name || "").trim();
-              if (!groupName) return { error: "set_group_name 需要提供 group_name" };
+              if (!groupName)
+                return { error: "set_group_name 需要提供 group_name" };
               await bot.api("set_group_name", {
                 group_id: groupId,
                 group_name: groupName,
@@ -331,7 +334,11 @@ const groupAdminSkill: AISkill = {
               return { error: `未知的 action: ${action}` };
           }
         } catch (err) {
-          logAdminSkillError(runtimeCtx, `admin_group.manage_group.${action}`, err);
+          logAdminSkillError(
+            runtimeCtx,
+            `admin_group.manage_group.${action}`,
+            err,
+          );
           return { error: `执行 ${action} 失败: ${err}` };
         }
       },

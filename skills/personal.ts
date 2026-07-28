@@ -21,13 +21,13 @@ function logAdminSkillError(runtimeCtx: any, toolName: string, err: unknown) {
 const personalSkill: AISkill = {
   name: "admin_personal",
   description:
-    "Bot个人账号与消息管理统一入口。action 决定行为：修改Bot资料(set_avatar/set_nickname/set_signature/set_gender)、发送消息(send_private/send_group)、获取列表(list_friends/list_groups)、管理关系(delete_friend/leave_group)。",
+    "Bot个人账号与消息管理统一入口：修改Bot资料、发送消息、获取列表、管理关系",
   permission: "owner",
   tools: [
     {
       name: "manage_personal",
       description:
-        "Bot个人账号管理：修改头像/昵称/签名/性别、给指定用户或群发消息、查看好友/群列表、删除好友、退群。所有功能通过 action 字段区分。",
+        "Bot个人账号管理：修改头像/昵称/签名/性别、给指定用户或群发消息、查看好友/群列表、删除好友、退群",
       parameters: {
         type: "object",
         properties: {
@@ -66,8 +66,7 @@ const personalSkill: AISkill = {
           },
           user_id: {
             type: "number",
-            description:
-              "目标QQ号。send_private / delete_friend 需要。",
+            description: "目标QQ号。send_private / delete_friend 需要。",
           },
           group_id: {
             type: "number",
