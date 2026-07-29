@@ -260,8 +260,8 @@ export function registerWelcomeHandler(
   const batches = getBatchMap();
 
   const dispose = ctx.handle(
-    "notice.group.increase" as any,
-    async (event: any) => {
+    "notice.group.increase",
+    async (event) => {
       const cfg = getConfig();
       const selfId = Number(event?.self_id || ctx.self_id);
       const groupId = Number(event?.group_id || 0);

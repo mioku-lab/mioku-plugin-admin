@@ -311,8 +311,8 @@ export function createVerifyController(
   }
 
   const messageDispose = ctx.handle(
-    "message.group" as any,
-    async (event: any) => {
+    "message.group",
+    async (event) => {
       try {
         await onGroupMessage(event);
       } catch (err) {
@@ -322,8 +322,8 @@ export function createVerifyController(
   );
 
   const reactionDispose = ctx.handle(
-    "notice.group.reaction" as any,
-    async (event: any) => {
+    "notice.group.reaction",
+    async (event) => {
       try {
         await onGroupReaction(event);
       } catch (err) {
@@ -333,8 +333,8 @@ export function createVerifyController(
   );
 
   const decreaseDispose = ctx.handle(
-    "notice.group.decrease" as any,
-    async (event: any) => {
+    "notice.group.decrease",
+    async (event) => {
       const selfId = Number(event?.self_id || 0);
       const groupId = Number(event?.group_id || 0);
       const userId = Number(event?.user_id || 0);

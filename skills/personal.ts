@@ -22,7 +22,7 @@ const personalSkill: AISkill = {
   name: "admin_personal",
   description:
     "Bot个人账号与消息管理统一入口：修改Bot资料、发送消息、获取列表、管理关系",
-  permission: "owner",
+  permission: "master",
   tools: [
     {
       name: "manage_personal",
