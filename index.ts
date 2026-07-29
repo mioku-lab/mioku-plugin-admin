@@ -1,6 +1,10 @@
 import { definePlugin, type MiokiContext } from "mioki";
-import type { AIService, ConfigService } from "mioku";
-import { setPluginRuntimeState, resetPluginRuntimeState } from "mioku";
+import {
+  setPluginRuntimeState,
+  resetPluginRuntimeState,
+  getService,
+  Services,
+} from "mioku";
 import groupAdminSkill from "./skills/group";
 import personalSkill from "./skills/personal";
 import { DEFAULT_CONFIG, normalizeConfig, type AdminConfig } from "./config";
@@ -27,8 +31,8 @@ export default definePlugin({
   description: "管理插件，提供事件通知与群管/个人管理指令",
 
   async setup(ctx: MiokiContext) {
-    const configService = ctx.services?.config as ConfigService | undefined;
-    const aiService = ctx.services?.ai as AIService | undefined;
+    const configService = getService(ctx, Services.Config);
+    const aiService = getService(ctx, Services.AI);
 
     let config: AdminConfig = { ...DEFAULT_CONFIG };
     let verifyConfig: VerifyConfig = { ...DEFAULT_VERIFY_CONFIG };
