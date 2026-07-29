@@ -1,6 +1,8 @@
 import { definePlugin, type MiokiContext } from "mioki";
 import type { AIService, ConfigService } from "mioku";
 import { setPluginRuntimeState, resetPluginRuntimeState } from "mioku";
+import groupAdminSkill from "./skills/group";
+import personalSkill from "./skills/personal";
 import { DEFAULT_CONFIG, normalizeConfig, type AdminConfig } from "./config";
 import {
   DEFAULT_VERIFY_CONFIG,
@@ -53,6 +55,11 @@ export default definePlugin({
 
     setPluginRuntimeState("admin", { ctx });
 
+    if (aiService) {
+      aiService.registerSkill(groupAdminSkill);
+      aiService.registerSkill(personalSkill);
+    }
+
     const getConfig = () => config;
     const getVerifyConfig = () => verifyConfig;
     const getWelcomeEnabled = () => config.welcome.enabled;
@@ -101,6 +108,10 @@ export default definePlugin({
     return () => {
       disposeWelcome();
       verifyController.dispose();
+      if (aiService) {
+        aiService.removeSkill("admin_group");
+        aiService.removeSkill("admin_personal");
+      }
       resetPluginRuntimeState("admin");
       ctx.logger.info("管理插件已卸载");
     };
