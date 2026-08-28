@@ -101,25 +101,34 @@ export function parseDuration(text: string): number {
   return 0;
 }
 
+import type { Bot } from "mioku";
+import { memberGetInfo } from "mioku";
+
+interface SegmentLike {
+  type: string;
+  data?: Record<string, unknown>;
+}
+
 // 从消息中提取图片URL
-export function extractImageUrl(message: RecvElement[]): string | undefined {
+export function extractImageUrl(message: readonly SegmentLike[] | null | undefined): string | undefined {
   if (!Array.isArray(message)) return undefined;
   for (const seg of message) {
     if (seg.type === "image") {
-      const imageSeg = seg as RecvImageElement;
-      return imageSeg.url || imageSeg.file;
+      const data = seg.data ?? {};
+      const url = String(data.url ?? data.file ?? "");
+      return url || undefined;
     }
   }
   return undefined;
 }
 
-export function extractImageUrls(message: RecvElement[]): string[] {
+export function extractImageUrls(message: readonly SegmentLike[] | null | undefined): string[] {
   if (!Array.isArray(message)) return [];
   const urls: string[] = [];
   for (const seg of message) {
     if (seg.type === "image") {
-      const imageSeg = seg as RecvImageElement;
-      const url = String(imageSeg.url || imageSeg.file || "").trim();
+      const data = seg.data ?? {};
+      const url = String(data.url ?? data.file ?? "").trim();
       if (url) urls.push(url);
     }
   }
@@ -127,34 +136,40 @@ export function extractImageUrls(message: RecvElement[]): string[] {
 }
 
 // 从消息中提取被@的人的QQ号
-export function getAtUserId(message: RecvElement[]): number | undefined {
+export function getAtUserId(message: readonly SegmentLike[] | null | undefined): number | undefined {
   if (!Array.isArray(message)) return undefined;
   const atSeg = message.find(
-    (seg): seg is RecvAtElement => seg.type === "at" && seg.qq !== "all",
+    (seg) =>
+      seg.type === "at" &&
+      String(seg.data?.qq ?? seg.data?.target) !== "all",
   );
   if (!atSeg) return undefined;
-  const qq = Number(atSeg.qq);
+  const qq = Number(atSeg.data?.qq ?? atSeg.data?.target);
   return Number.isFinite(qq) ? qq : undefined;
 }
 
 // 获取群成员头像URL
-export function getAvatarUrl(userId: number): string {
-  return `https://q1.qlogo.cn/g?b=qq&nk=${userId}&s=640`;
+export function getAvatarUrl(userId: number | string): string {
+  return `https://q1.qlogo.cn/g?b=qq&nk=${String(userId)}&s=640`;
 }
 
 // 获取群头像URL
-export function getGroupAvatarUrl(groupId: number): string {
-  return `https://p.qlogo.cn/gh/${groupId}/${groupId}/640/`;
+export function getGroupAvatarUrl(groupId: number | string): string {
+  const g = String(groupId);
+  return `https://p.qlogo.cn/gh/${g}/${g}/640/`;
 }
 
 // 获取Bot群成员角色
 export async function getMemberRole(
-  bot: any,
+  bot: Bot,
   groupId: number,
   userId: number,
 ): Promise<string> {
   try {
-    const info = await bot.getGroupMemberInfo(groupId, userId);
+    const info = await bot.invoke(memberGetInfo, {
+      group_id: String(groupId),
+      user_id: String(userId),
+    });
     return info?.role || "member";
   } catch {
     return "member";

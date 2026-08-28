@@ -1,18 +1,5 @@
-import { MiokiContext } from "mioki";
-import type {
-  MessageEvent,
-  RecvAtElement,
-  RecvElement,
-  RecvFaceElement,
-  RecvFileElement,
-  RecvForwardElement,
-  RecvImageElement,
-  RecvJsonElement,
-  RecvRecordElement,
-  RecvReplyElement,
-  RecvTextElement,
-  RecvVideoElement,
-} from "napcat-sdk";
+import type { Bot, MessageEvent, MiokuContext, MessageSegment } from "mioku";
+import { createGroupRef, friendDelete, friendGetList, groupGetList } from "mioku";
 import { extractImageUrl } from "../config";
 import { replyAdminErrorNotice } from "./notice";
 
@@ -23,80 +10,70 @@ function parseProfileSex(value: string): 0 | 1 | 2 {
   return 0;
 }
 
-function toSendSegment(ctx: MiokiContext, seg: RecvElement): any | null {
-  if (seg.type === "text") {
-    const text = String((seg as RecvTextElement).text || "");
-    return text ? ctx.segment.text(text) : null;
-  }
-
-  if (seg.type === "image" || seg.type === "record" || seg.type === "video") {
-    const mediaSeg = seg as
-      | RecvImageElement
-      | RecvRecordElement
-      | RecvVideoElement;
-    const source = String(mediaSeg.url || mediaSeg.file || "").trim();
-    if (!source) return null;
-    if (seg.type === "image") {
-      return ctx.segment.image(source);
+function toSendSegment(ctx: MiokuContext, seg: MessageSegment): MessageSegment | null {
+  const data = seg.data as Record<string, unknown>;
+  switch (seg.type) {
+    case "text": {
+      const text = String(data.text ?? "").trim();
+      return text ? ctx.segment.text(text) : null;
     }
-    if (seg.type === "record") {
-      return (ctx.segment as any).record(source);
+    case "image": {
+      const source = String(data.url ?? data.file ?? "").trim();
+      return source ? ctx.segment.image(source) : null;
     }
-    return (ctx.segment as any).video(source);
+    case "record": {
+      const source = String(data.file ?? data.url ?? "").trim();
+      return source ? ctx.segment.raw("record", { file: source }) : null;
+    }
+    case "video": {
+      const source = String(data.file ?? data.url ?? "").trim();
+      return source ? ctx.segment.raw("video", { file: source }) : null;
+    }
+    case "file": {
+      const source = String(data.file ?? data.url ?? "").trim();
+      return source ? ctx.segment.raw("file", { file: source }) : null;
+    }
+    case "at": {
+      const target = String(data.qq ?? data.target ?? "");
+      return target && target !== "all" ? ctx.segment.at(target) : null;
+    }
+    case "face": {
+      const id = data.id;
+      return id == null ? null : ctx.segment.raw("face", { id: String(id) });
+    }
+    case "reply": {
+      const id = data.message_id ?? data.id;
+      return id == null ? null : ctx.segment.reply(String(id));
+    }
+    case "forward": {
+      const id = data.id;
+      return id == null ? null : ctx.segment.raw("forward", { id: String(id) });
+    }
+    case "json": {
+      return ctx.segment.raw("json", data);
+    }
+    default:
+      return seg;
   }
-
-  if (seg.type === "file") {
-    const fileSeg = seg as RecvFileElement;
-    const source = String(fileSeg.url || fileSeg.file || "").trim();
-    if (!source) return null;
-    return (ctx.segment as any).file(source);
-  }
-
-  if (seg.type === "at") {
-    const qq = (seg as RecvAtElement).qq;
-    return qq == null ? null : ctx.segment.at(String(qq));
-  }
-
-  if (seg.type === "face") {
-    const id = (seg as RecvFaceElement).id;
-    return id == null ? null : ctx.segment.face(Number(id));
-  }
-
-  if (seg.type === "reply") {
-    const id = (seg as RecvReplyElement).id;
-    return id == null ? null : ctx.segment.reply(String(id));
-  }
-
-  if (seg.type === "forward") {
-    const id = (seg as RecvForwardElement).id;
-    return id == null
-      ? null
-      : ((ctx.segment as any).forward?.(String(id)) ?? null);
-  }
-
-  if (seg.type === "json") {
-    const data = (seg as RecvJsonElement).data;
-    return ctx.segment.json ? ctx.segment.json(data) : null;
-  }
-
-  return null;
 }
 
 function normalizeIncomingSegments(
-  ctx: MiokiContext,
-  segments: RecvElement[],
-): any[] {
+  ctx: MiokuContext,
+  segments: readonly MessageSegment[],
+): MessageSegment[] {
   if (!Array.isArray(segments)) return [];
-  return segments.map((seg) => toSendSegment(ctx, seg)).filter(Boolean);
+  return segments
+    .map((seg) => toSendSegment(ctx, seg))
+    .filter((seg): seg is MessageSegment => seg !== null);
 }
 
 function buildForwardPayloadAfterCommand(
-  ctx: MiokiContext,
-  message: RecvElement[],
+  ctx: MiokuContext,
+  message: readonly MessageSegment[],
   commandPattern: RegExp,
   fallbackText?: string,
-): any[] {
-  const payload: any[] = [];
+): MessageSegment[] {
+  const payload: MessageSegment[] = [];
   let stripped = false;
 
   for (const seg of message) {
@@ -107,7 +84,7 @@ function buildForwardPayloadAfterCommand(
       }
       continue;
     }
-    const original = String((seg as RecvTextElement).text || "");
+    const original = String((seg.data as Record<string, unknown>).text ?? "");
     if (!stripped) {
       const nextText = original.replace(commandPattern, "");
       if (nextText !== original) {
@@ -134,45 +111,40 @@ function buildForwardPayloadAfterCommand(
   return payload;
 }
 
-function toForwardMessages(bot: any, nodes: any[]): any[] {
-  const normalizeElements = (elements: any[]): any[] => {
-    if (typeof bot?.normalizeSendable === "function") {
-      return bot.normalizeSendable(elements);
+function toForwardMessages(bot: Bot, nodes: readonly unknown[]): unknown[] {
+  const normalizeElements = (elements: readonly unknown[]): unknown[] => {
+    const asRecord = (element: unknown): unknown => {
+      if (!element || typeof element !== "object") return element
+      if ("type" in element && "data" in element) return element
+      if ("type" in element) {
+        const { type, ...data } = element as { type: string } & Record<string, unknown>
+        return { type, data }
+      }
+      return element
     }
-    return elements.map((element: any) => {
-      if (
-        element &&
-        typeof element === "object" &&
-        "type" in element &&
-        "data" in element
-      ) {
-        return element;
-      }
-      if (element && typeof element === "object" && "type" in element) {
-        const { type, ...data } = element;
-        return { type, data };
-      }
-      return element;
-    });
+    const sendable = (bot as unknown as { normalizeSendable?: (v: unknown[]) => unknown[] }).normalizeSendable
+    if (typeof sendable === "function") return sendable(elements as unknown[])
+    return elements.map(asRecord)
   };
 
-  return nodes.map((node: any) => {
+  return nodes.map((node) => {
     const rawNode =
       node && typeof node === "object" && "type" in node && "data" in node
-        ? { type: node.type, ...node.data }
+        ? { type: (node as { type: string }).type, ...(node as { data: Record<string, unknown> }).data }
         : node;
-    if (!rawNode || rawNode.type !== "node") {
+    if (!rawNode || typeof rawNode !== "object" || (rawNode as { type?: unknown }).type !== "node") {
       return normalizeElements([rawNode])[0];
     }
 
-    const content = Array.isArray(rawNode.content) ? rawNode.content : [];
-    if ("id" in rawNode && rawNode.id) {
+    const nodeObj = rawNode as { type: string; user_id?: string; nickname?: string; id?: string; content?: unknown };
+    const content = Array.isArray(nodeObj.content) ? nodeObj.content : [];
+    if (nodeObj.id) {
       return {
         type: "node",
         data: {
-          user_id: rawNode.user_id,
-          nickname: rawNode.nickname,
-          id: rawNode.id,
+          user_id: nodeObj.user_id,
+          nickname: nodeObj.nickname,
+          id: nodeObj.id,
         },
       };
     }
@@ -180,8 +152,8 @@ function toForwardMessages(bot: any, nodes: any[]): any[] {
     return {
       type: "node",
       data: {
-        user_id: rawNode.user_id,
-        nickname: rawNode.nickname,
+        user_id: nodeObj.user_id,
+        nickname: nodeObj.nickname,
         content: normalizeElements(content),
       },
     };
@@ -189,32 +161,32 @@ function toForwardMessages(bot: any, nodes: any[]): any[] {
 }
 
 async function sendForwardByEvent(options: {
-  bot: any;
-  event: any;
-  messages: any[];
+  bot: Bot;
+  event: MessageEvent;
+  messages: readonly unknown[];
 }): Promise<void> {
   const { bot, event, messages } = options;
   const chunkSize = 50;
 
   for (let i = 0; i < messages.length; i += chunkSize) {
     const chunk = messages.slice(i, i + chunkSize);
-    if (event?.message_type === "group" && event?.group_id) {
-      await bot.api("send_group_forward_msg", {
-        group_id: event.group_id,
+    if (event.message_type === "group" && event.group_id) {
+      await bot.sendApi("send_group_forward_msg", {
+        group_id: String(event.group_id),
         messages: chunk,
       });
       continue;
     }
 
-    await bot.api("send_private_forward_msg", {
-      user_id: event.user_id,
+    await bot.sendApi("send_private_forward_msg", {
+      user_id: String(event.user_id),
       messages: chunk,
     });
   }
 }
 
-export function registerPersonalCommands(ctx: MiokiContext) {
-  ctx.handle("message", async (event: MessageEvent) => {
+export function registerPersonalCommands(ctx: MiokuContext) {
+  ctx.handle("message", async (event) => {
     const text = ctx.text(event)?.trim();
     if (!text) return;
     if (event.user_id === event.self_id) return;
@@ -234,10 +206,11 @@ export function registerPersonalCommands(ctx: MiokiContext) {
       }
       const imageUrl = extractImageUrl(event.message);
       if (!imageUrl) {
-        return event.reply("图片呢图片呢～", true);
+        await event.reply("图片呢图片呢～", true);
+      return;
       }
       try {
-        await bot.api("set_qq_avatar", { file: imageUrl });
+        await bot.sendApi("set_qq_avatar", { file: imageUrl });
         await event.reply("done");
       } catch (err) {
         await replyAdminErrorNotice({
@@ -259,10 +232,11 @@ export function registerPersonalCommands(ctx: MiokiContext) {
       }
       const nickname = text.replace(/^\/改昵称\s*/, "").trim();
       if (!nickname) {
-        return event.reply("想改成什么昵称呀～", true);
+        await event.reply("想改成什么昵称呀～", true);
+      return;
       }
       try {
-        await bot.api("set_qq_profile", { nickname });
+        await bot.sendApi("set_qq_profile", { nickname });
         await event.reply("done");
       } catch (err) {
         await replyAdminErrorNotice({
@@ -283,10 +257,11 @@ export function registerPersonalCommands(ctx: MiokiContext) {
       }
       const personalNote = text.replace(/^\/改签名\s*/, "").trim();
       if (!personalNote) {
-        return event.reply("想改成什么签名呀～", true);
+        await event.reply("想改成什么签名呀～", true);
+      return;
       }
       try {
-        await bot.api("set_qq_profile", { personal_note: personalNote });
+        await bot.sendApi("set_qq_profile", { personal_note: personalNote });
         await event.reply("done");
       } catch (err) {
         await replyAdminErrorNotice({
@@ -308,7 +283,7 @@ export function registerPersonalCommands(ctx: MiokiContext) {
       const genderText = text.replace(/^\/改性别\s*/, "").trim();
       const sex = parseProfileSex(genderText);
       try {
-        await bot.api("set_qq_profile", { sex });
+        await bot.sendApi("set_qq_profile", { sex });
         await event.reply("done");
       } catch (err) {
         await replyAdminErrorNotice({
@@ -338,7 +313,7 @@ export function registerPersonalCommands(ctx: MiokiContext) {
         return;
       }
       try {
-        await bot.api("delete_friend", { user_id: qq });
+        await bot.invoke(friendDelete, { user_id: String(qq) });
         await event.reply("done");
       } catch (err) {
         await replyAdminErrorNotice({
@@ -368,10 +343,7 @@ export function registerPersonalCommands(ctx: MiokiContext) {
         return;
       }
       try {
-        await bot.api("set_group_leave", {
-          group_id: targetGroup,
-          is_dismiss: false,
-        });
+        await createGroupRef(bot, String(targetGroup)).leave(false);
         await event.reply("done");
       } catch (err) {
         await replyAdminErrorNotice({
@@ -420,7 +392,7 @@ export function registerPersonalCommands(ctx: MiokiContext) {
         return;
       }
       try {
-        await bot.sendPrivateMsg(targetUser, payload);
+        await bot.sendMessage({ type: "private", user_id: String(targetUser) }, payload);
         await event.reply("done");
       } catch (err) {
         await replyAdminErrorNotice({
@@ -469,7 +441,7 @@ export function registerPersonalCommands(ctx: MiokiContext) {
         return;
       }
       try {
-        await bot.sendGroupMsg(targetGroup, payload);
+        await bot.sendMessage({ type: "group", group_id: String(targetGroup) }, payload);
         await event.reply("done");
       } catch (err) {
         await replyAdminErrorNotice({
@@ -493,7 +465,7 @@ export function registerPersonalCommands(ctx: MiokiContext) {
         return;
       }
       try {
-        const friendList: any[] = await bot.api("get_friend_list");
+        const friendList = await bot.invoke(friendGetList, {});
         if (!Array.isArray(friendList) || friendList.length === 0) {
           await replyAdminErrorNotice({
             ctx,
@@ -503,8 +475,8 @@ export function registerPersonalCommands(ctx: MiokiContext) {
           });
           return;
         }
-        const nodes = friendList.map((friend: any) =>
-          ctx.segment.node({
+        const nodes = friendList.map((friend) =>
+          ctx.segment.raw("node", {
             user_id: String(friend.user_id),
             nickname:
               friend.nickname || friend.remark || String(friend.user_id),
@@ -518,11 +490,7 @@ export function registerPersonalCommands(ctx: MiokiContext) {
             ],
           }),
         );
-        await sendForwardByEvent({
-          bot,
-          event,
-          messages: toForwardMessages(bot, nodes),
-        });
+        await sendForwardByEvent({ bot, event, messages: nodes });
       } catch (err) {
         await replyAdminErrorNotice({
           ctx,
@@ -545,7 +513,7 @@ export function registerPersonalCommands(ctx: MiokiContext) {
         return;
       }
       try {
-        const groupList: any[] = await bot.api("get_group_list");
+        const groupList = await bot.invoke(groupGetList, {});
         if (!Array.isArray(groupList) || groupList.length === 0) {
           await replyAdminErrorNotice({
             ctx,
@@ -555,8 +523,8 @@ export function registerPersonalCommands(ctx: MiokiContext) {
           });
           return;
         }
-        const nodes = groupList.map((group: any) =>
-          ctx.segment.node({
+        const nodes = groupList.map((group) =>
+          ctx.segment.raw("node", {
             user_id: String(selfId),
             nickname: String(selfId),
             content: [
@@ -569,11 +537,7 @@ export function registerPersonalCommands(ctx: MiokiContext) {
             ],
           }),
         );
-        await sendForwardByEvent({
-          bot,
-          event,
-          messages: toForwardMessages(bot, nodes),
-        });
+        await sendForwardByEvent({ bot, event, messages: nodes });
       } catch (err) {
         await replyAdminErrorNotice({
           ctx,

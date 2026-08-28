@@ -1,4 +1,4 @@
-import { definePlugin, type MiokiContext } from "mioki";
+import { definePlugin, type MiokuContext } from "mioku";
 import {
   setPluginRuntimeState,
   resetPluginRuntimeState,
@@ -21,7 +21,7 @@ import { registerWelcomeHandler } from "./notify/welcome";
 import { createVerifyController } from "./verify";
 
 interface RuntimeState {
-  ctx?: MiokiContext;
+  ctx?: MiokuContext;
   config?: AdminConfig;
 }
 
@@ -30,7 +30,7 @@ export default definePlugin({
   version: "1.0.0",
   description: "管理插件，提供事件通知与群管/个人管理指令",
 
-  async setup(ctx: MiokiContext) {
+  async setup(ctx: MiokuContext) {
     const configService = getService(ctx, Services.Config);
     const aiService = getService(ctx, Services.AI);
 

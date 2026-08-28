@@ -1,4 +1,4 @@
-import type { MiokiContext } from "mioki";
+import type { MessageEvent, MiokuContext } from "mioku";
 import { getService, Services } from "mioku";
 
 function normalizeErrorMessage(error: unknown): string {
@@ -16,8 +16,8 @@ function normalizeErrorMessage(error: unknown): string {
 }
 
 export async function replyAdminErrorNotice(options: {
-  ctx: MiokiContext;
-  event: any;
+  ctx: MiokuContext;
+  event: MessageEvent;
   instruction: string;
   fallbackMessage: string;
   error?: unknown;

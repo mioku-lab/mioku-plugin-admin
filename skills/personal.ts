@@ -1,18 +1,38 @@
-import type { AISkill } from "mioku";
+import type { AISkill, Bot, MessageEvent } from "mioku";
+import {
+  avatarSet,
+  friendDelete,
+  friendGetList,
+  groupGetList,
+  groupLeave,
+  profileSet,
+} from "mioku";
 import { getImageUrlByMessageId } from "./message-image";
 
+import type { MessageSegment } from "mioku";
+
+interface SkillRuntimeContext {
+  ctx?: {
+    pickBot: (id: string) => Bot | undefined;
+    segment: { text(text: string): MessageSegment };
+    logger?: { error?: (...args: unknown[]) => void };
+  };
+  event?: MessageEvent;
+  rawEvent?: MessageEvent;
+}
+
 function parseProfileSex(value: string): 0 | 1 | 2 {
-  const normalized = String(value || "")
-    .trim()
-    .toLowerCase();
-  if (normalized === "男" || normalized === "male" || normalized === "1")
-    return 1;
-  if (normalized === "女" || normalized === "female" || normalized === "2")
-    return 2;
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "男" || normalized === "male" || normalized === "1") return 1;
+  if (normalized === "女" || normalized === "female" || normalized === "2") return 2;
   return 0;
 }
 
-function logAdminSkillError(runtimeCtx: any, toolName: string, err: unknown) {
+function logAdminSkillError(
+  runtimeCtx: SkillRuntimeContext | undefined,
+  toolName: string,
+  err: unknown,
+) {
   runtimeCtx?.ctx?.logger?.error?.(
     `[admin skills] ${toolName} failed: ${String(err)}`,
   );
@@ -51,10 +71,7 @@ const personalSkill: AISkill = {
             type: "number",
             description: "包含图片的消息 message_id，仅 set_avatar 需要",
           },
-          nickname: {
-            type: "string",
-            description: "新昵称，仅 set_nickname 需要",
-          },
+          nickname: { type: "string", description: "新昵称，仅 set_nickname 需要" },
           personal_note: {
             type: "string",
             description: "新个性签名，仅 set_signature 需要",
@@ -79,94 +96,73 @@ const personalSkill: AISkill = {
         },
         required: ["action"],
       },
-      handler: async (args: any, runtimeCtx?: any) => {
+      handler: async (args: unknown, runtimeCtx?: SkillRuntimeContext) => {
         const ctx = runtimeCtx?.ctx;
         if (!ctx) return { error: "无法获取上下文" };
-        const event = runtimeCtx?.event || runtimeCtx?.rawEvent;
+        const event = runtimeCtx?.event ?? runtimeCtx?.rawEvent;
         const selfId = event?.self_id;
         if (!selfId) return { error: "无法获取Bot ID" };
-        const bot = ctx.pickBot(selfId);
+        const bot = ctx.pickBot(String(selfId));
         if (!bot) return { error: "Bot不可用" };
-        const action = String(args?.action || "");
+        const a = args as Record<string, unknown>;
+        const action = String(a?.action ?? "");
 
         try {
           switch (action) {
             case "set_avatar": {
-              const messageId = Number(args?.message_id);
+              const messageId = Number(a?.message_id);
               if (!Number.isFinite(messageId) || messageId <= 0) {
                 return { error: "set_avatar 需要提供有效的 message_id" };
               }
               const imageUrl = await getImageUrlByMessageId(bot, messageId);
-              if (!imageUrl) {
-                return { error: "指定 message_id 中未找到图片" };
-              }
-              await bot.api("set_qq_avatar", { file: imageUrl });
+              if (!imageUrl) return { error: "指定 message_id 中未找到图片" };
+              await bot.invoke(avatarSet, { file: imageUrl });
               return { success: true, message: "Bot头像已修改" };
             }
             case "set_nickname": {
-              const nickname = String(args?.nickname || "").trim();
-              if (!nickname) {
-                return { error: "set_nickname 需要提供 nickname" };
-              }
-              await bot.api("set_qq_profile", { nickname });
-              return {
-                success: true,
-                message: `Bot昵称已修改为: ${nickname}`,
-              };
+              const nickname = String(a?.nickname ?? "").trim();
+              if (!nickname) return { error: "set_nickname 需要提供 nickname" };
+              await bot.invoke(profileSet, { nickname });
+              return { success: true, message: `Bot昵称已修改为: ${nickname}` };
             }
             case "set_signature": {
-              const personalNote = String(args?.personal_note || "").trim();
-              if (!personalNote) {
-                return { error: "set_signature 需要提供 personal_note" };
-              }
-              await bot.api("set_qq_profile", { personal_note: personalNote });
+              const personalNote = String(a?.personal_note ?? "").trim();
+              if (!personalNote) return { error: "set_signature 需要提供 personal_note" };
+              await bot.invoke(profileSet, { personal_note: personalNote });
               return { success: true, message: "Bot个性签名已修改" };
             }
             case "set_gender": {
-              const sex = parseProfileSex(args?.gender);
-              await bot.api("set_qq_profile", { sex });
-              const genderMap: Record<number, string> = {
-                0: "无",
-                1: "男",
-                2: "女",
-              };
-              return {
-                success: true,
-                message: `Bot性别已修改为: ${genderMap[sex]}`,
-              };
+              const sex = parseProfileSex(String(a?.gender ?? ""));
+              await bot.invoke(profileSet, { sex });
+              const genderMap: Record<number, string> = { 0: "无", 1: "男", 2: "女" };
+              return { success: true, message: `Bot性别已修改为: ${genderMap[sex]}` };
             }
             case "send_private": {
-              const userId = Number(args?.user_id);
-              const content = String(args?.content || "");
-              if (!userId || !content) {
-                return { error: "send_private 需要提供 user_id 和 content" };
-              }
-              await bot.sendPrivateMsg(userId, [ctx.segment.text(content)]);
-              return {
-                success: true,
-                message: `已发送私聊消息给 ${userId}`,
-              };
+              const userId = Number(a?.user_id);
+              const content = String(a?.content ?? "");
+              if (!userId || !content) return { error: "send_private 需要提供 user_id 和 content" };
+              await bot.sendMessage(
+                { type: "private", user_id: String(userId) },
+                [ctx.segment.text(content)],
+              );
+              return { success: true, message: `已发送私聊消息给 ${userId}` };
             }
             case "send_group": {
-              const groupId = Number(args?.group_id);
-              const content = String(args?.content || "");
-              if (!groupId || !content) {
-                return { error: "send_group 需要提供 group_id 和 content" };
-              }
-              await bot.sendGroupMsg(groupId, [ctx.segment.text(content)]);
-              return {
-                success: true,
-                message: `已发送群消息到 ${groupId}`,
-              };
+              const groupId = Number(a?.group_id);
+              const content = String(a?.content ?? "");
+              if (!groupId || !content) return { error: "send_group 需要提供 group_id 和 content" };
+              await bot.sendMessage(
+                { type: "group", group_id: String(groupId) },
+                [ctx.segment.text(content)],
+              );
+              return { success: true, message: `已发送群消息到 ${groupId}` };
             }
             case "list_friends": {
-              if (event?.message_type === "group") {
-                return { error: "在私聊使用试试看吧～" };
-              }
-              const friendList: any[] = await bot.api("get_friend_list");
+              if (event?.message_type === "group") return { error: "在私聊使用试试看吧～" };
+              const friendList = await bot.invoke(friendGetList, {});
               if (!Array.isArray(friendList)) return { friends: [] };
               return {
-                friends: friendList.map((f) => ({
+                friends: friendList.map((f: { user_id?: unknown; nickname?: unknown; remark?: unknown }) => ({
                   user_id: f.user_id,
                   nickname: f.nickname,
                   remark: f.remark,
@@ -174,13 +170,11 @@ const personalSkill: AISkill = {
               };
             }
             case "list_groups": {
-              if (event?.message_type === "group") {
-                return { error: "在私聊使用试试看吧～" };
-              }
-              const groupList: any[] = await bot.api("get_group_list");
+              if (event?.message_type === "group") return { error: "在私聊使用试试看吧～" };
+              const groupList = await bot.invoke(groupGetList, {});
               if (!Array.isArray(groupList)) return { groups: [] };
               return {
-                groups: groupList.map((g) => ({
+                groups: groupList.map((g: { group_id?: unknown; group_name?: unknown; member_count?: unknown }) => ({
                   group_id: g.group_id,
                   group_name: g.group_name,
                   member_count: g.member_count,
@@ -188,33 +182,22 @@ const personalSkill: AISkill = {
               };
             }
             case "delete_friend": {
-              const userId = Number(args?.user_id);
-              if (!userId) {
-                return { error: "delete_friend 需要提供 user_id" };
-              }
-              await bot.api("delete_friend", { user_id: userId });
+              const userId = Number(a?.user_id);
+              if (!userId) return { error: "delete_friend 需要提供 user_id" };
+              await bot.invoke(friendDelete, { user_id: String(userId) });
               return { success: true, message: `已删除好友 ${userId}` };
             }
             case "leave_group": {
-              const groupId = Number(args?.group_id);
-              if (!groupId) {
-                return { error: "leave_group 需要提供 group_id" };
-              }
-              await bot.api("set_group_leave", {
-                group_id: groupId,
-                is_dismiss: false,
-              });
+              const groupId = Number(a?.group_id);
+              if (!groupId) return { error: "leave_group 需要提供 group_id" };
+              await bot.invoke(groupLeave, { group_id: String(groupId), is_dismiss: false });
               return { success: true, message: `已退出群 ${groupId}` };
             }
             default:
               return { error: `未知的 action: ${action}` };
           }
         } catch (err) {
-          logAdminSkillError(
-            runtimeCtx,
-            `admin_personal.manage_personal.${action}`,
-            err,
-          );
+          logAdminSkillError(runtimeCtx, `admin_personal.manage_personal.${action}`, err);
           return { error: `执行 ${action} 失败: ${err}` };
         }
       },

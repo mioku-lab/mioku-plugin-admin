@@ -1,10 +1,10 @@
-import type { MiokiContext } from "mioki";
+import type { MiokuContext } from "mioku";
 import type { AIService } from "mioku";
 import type { AdminConfig } from "../config";
 import type { VerifyConfig, VerifyMode } from "./config";
 
 export interface VerifyControllerOptions {
-  ctx: MiokiContext;
+  ctx: MiokuContext;
   aiService?: AIService;
   getConfig: () => AdminConfig;
   getVerifyConfig: () => VerifyConfig;

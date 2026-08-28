@@ -1,25 +1,52 @@
-import type { AISkill } from "mioku";
+import type { AISkill, Bot, MessageEvent } from "mioku";
+import {
+  groupSetName,
+  groupSetPortrait,
+  groupSetWholeBan,
+  memberBan,
+  memberKick,
+  memberSetAdmin,
+  memberSetCard,
+  memberSetTitle,
+  messageRecall,
+} from "mioku";
 import { getMemberRole } from "../config";
 import { getImageUrlByMessageId } from "./message-image";
 
-async function resolveGroupRuntime(runtimeCtx: any) {
+interface GroupRuntime {
+  ctx: { pickBot: (id: string) => Bot | undefined; logger?: { error?: (...args: unknown[]) => void } };
+  event: MessageEvent;
+  bot: Bot;
+  groupId: number;
+  selfId: number;
+}
+
+interface SkillRuntimeContext {
+  ctx?: GroupRuntime["ctx"];
+  event?: MessageEvent;
+  rawEvent?: MessageEvent;
+}
+
+function resolveGroupRuntime(runtimeCtx: SkillRuntimeContext | undefined):
+  | GroupRuntime
+  | { error: string } {
   const ctx = runtimeCtx?.ctx;
   if (!ctx) return { error: "无法获取上下文" };
 
-  const event = runtimeCtx?.event || runtimeCtx?.rawEvent;
-  const groupId = Number(event?.group_id || 0);
+  const event = runtimeCtx?.event ?? runtimeCtx?.rawEvent;
+  const groupId = Number(event?.group_id ?? 0);
   if (!groupId) return { error: "这个工具只能在群聊中使用" };
 
-  const selfId = runtimeCtx?.event?.self_id || runtimeCtx?.rawEvent?.self_id;
+  const selfId = Number(event?.self_id ?? 0);
   if (!selfId) return { error: "无法获取Bot ID" };
 
-  const bot = ctx.pickBot(selfId);
+  const bot = ctx.pickBot(String(selfId));
   if (!bot) return { error: "Bot不可用" };
 
-  return { ctx, selfId, bot, groupId, event };
+  return { ctx, event: event!, bot, groupId, selfId };
 }
 
-function logAdminSkillError(runtimeCtx: any, toolName: string, err: unknown) {
+function logAdminSkillError(runtimeCtx: SkillRuntimeContext | undefined, toolName: string, err: unknown) {
   runtimeCtx?.ctx?.logger?.error?.(
     `[admin skills] ${toolName} failed: ${String(err)}`,
   );
@@ -32,22 +59,16 @@ function formatGroupRole(role: string): string {
 }
 
 async function checkDangerousTargetPermission(
-  runtime: any,
+  runtime: GroupRuntime,
   targetUserId: number,
 ): Promise<string | null> {
-  const operatorUserId = Number(runtime.event?.user_id || 0);
+  const operatorUserId = Number(runtime.event.user_id ?? 0);
   if (!operatorUserId) return "无法获取当前操作人ID";
 
-  const operatorRole = await getMemberRole(
-    runtime.bot,
-    runtime.groupId,
-    operatorUserId,
-  );
-  const targetRole = await getMemberRole(
-    runtime.bot,
-    runtime.groupId,
-    targetUserId,
-  );
+  const [operatorRole, targetRole] = await Promise.all([
+    getMemberRole(runtime.bot, runtime.groupId, operatorUserId),
+    getMemberRole(runtime.bot, runtime.groupId, targetUserId),
+  ]);
   if (operatorRole !== targetRole) return null;
 
   return `无权操作同级成员：操作人与被操作人均为${formatGroupRole(operatorRole)}`;
@@ -94,108 +115,98 @@ const groupAdminSkill: AISkill = {
         },
         required: ["action"],
       },
-      handler: async (args: any, runtimeCtx?: any) => {
-        const runtime = await resolveGroupRuntime(runtimeCtx);
+      handler: async (args: unknown, runtimeCtx?: SkillRuntimeContext) => {
+        const runtime = resolveGroupRuntime(runtimeCtx);
         if ("error" in runtime) return { error: runtime.error };
-        const { bot, selfId, groupId, event } = runtime;
-        const action = String(args?.action || "");
+        const { bot, groupId, event } = runtime;
+        const action = String((args as { action?: unknown })?.action ?? "");
 
         try {
           switch (action) {
             case "kick": {
-              const userId = Number(args?.user_id);
+              const userId = Number((args as { user_id?: unknown })?.user_id);
               if (!userId) return { error: "kick 需要提供 user_id" };
-              const permErr = await checkDangerousTargetPermission(
-                runtime,
-                userId,
-              );
+              const permErr = await checkDangerousTargetPermission(runtime, userId);
               if (permErr) return { error: permErr };
-              await bot.api("set_group_kick", {
-                group_id: groupId,
-                user_id: userId,
-              });
+              await bot.invoke(memberKick, { group_id: String(groupId), user_id: String(userId) });
               return { success: true, message: `已将 ${userId} 移出当前群` };
             }
             case "mute": {
-              const userId = Number(args?.user_id);
+              const userId = Number((args as { user_id?: unknown })?.user_id);
               if (!userId) return { error: "mute 需要提供 user_id" };
-              const permErr = await checkDangerousTargetPermission(
-                runtime,
-                userId,
-              );
+              const permErr = await checkDangerousTargetPermission(runtime, userId);
               if (permErr) return { error: permErr };
               const duration =
-                Number(args?.duration) > 0 ? Number(args.duration) : 10 * 60;
-              await bot.setGroupBan(groupId, userId, duration);
-              return {
-                success: true,
-                message: `已禁言 ${userId} ${duration}秒`,
-              };
+                Number((args as { duration?: unknown })?.duration) > 0
+                  ? Number((args as { duration?: unknown }).duration)
+                  : 10 * 60;
+              await bot.invoke(memberBan, {
+                group_id: String(groupId),
+                user_id: String(userId),
+                duration,
+              });
+              return { success: true, message: `已禁言 ${userId} ${duration}秒` };
             }
             case "unmute": {
-              const userId = Number(args?.user_id);
+              const userId = Number((args as { user_id?: unknown })?.user_id);
               if (!userId) return { error: "unmute 需要提供 user_id" };
-              await bot.setGroupBan(groupId, userId, 0);
+              await bot.invoke(memberBan, {
+                group_id: String(groupId),
+                user_id: String(userId),
+                duration: 0,
+              });
               return { success: true, message: `已解除 ${userId} 的禁言` };
             }
             case "set_admin": {
-              const userId = Number(args?.user_id);
+              const userId = Number((args as { user_id?: unknown })?.user_id);
               if (!userId) return { error: "set_admin 需要提供 user_id" };
-              await bot.api("set_group_admin", {
-                group_id: groupId,
-                user_id: userId,
+              await bot.invoke(memberSetAdmin, {
+                group_id: String(groupId),
+                user_id: String(userId),
                 enable: true,
               });
-              return {
-                success: true,
-                message: `已将 ${userId} 设为当前群的管理员`,
-              };
+              return { success: true, message: `已将 ${userId} 设为当前群的管理员` };
             }
             case "unset_admin": {
-              const userId = Number(args?.user_id);
+              const userId = Number((args as { user_id?: unknown })?.user_id);
               if (!userId) return { error: "unset_admin 需要提供 user_id" };
-              await bot.api("set_group_admin", {
-                group_id: groupId,
-                user_id: userId,
+              await bot.invoke(memberSetAdmin, {
+                group_id: String(groupId),
+                user_id: String(userId),
                 enable: false,
               });
-              return {
-                success: true,
-                message: `已取消 ${userId} 在当前群的管理员`,
-              };
+              return { success: true, message: `已取消 ${userId} 在当前群的管理员` };
             }
             case "set_title": {
-              const userId = Number(args?.user_id);
-              const title = String(args?.title || "").trim();
+              const userId = Number((args as { user_id?: unknown })?.user_id);
+              const title = String((args as { title?: unknown })?.title ?? "").trim();
               if (!userId || !title) {
                 return { error: "set_title 需要提供 user_id 和 title" };
               }
-              await (bot as any).setGroupSpecialTitle(groupId, userId, title);
-              return {
-                success: true,
-                message: `已将 ${userId} 的头衔设为 "${title}"`,
-              };
+              await bot.invoke(memberSetTitle, {
+                group_id: String(groupId),
+                user_id: String(userId),
+                title,
+              });
+              return { success: true, message: `已将 ${userId} 的头衔设为 "${title}"` };
             }
             case "set_self_title": {
-              const userId = Number(event?.user_id);
+              const userId = Number(event.user_id);
               if (!userId) return { error: "无法获取当前用户ID" };
-              const title = String(args?.title || "").trim();
+              const title = String((args as { title?: unknown })?.title ?? "").trim();
               if (!title) return { error: "set_self_title 需要提供 title" };
-              await (bot as any).setGroupSpecialTitle(groupId, userId, title);
-              return {
-                success: true,
-                message: `已将你的头衔设为 "${title}"`,
-              };
+              await bot.invoke(memberSetTitle, {
+                group_id: String(groupId),
+                user_id: String(userId),
+                title,
+              });
+              return { success: true, message: `已将你的头衔设为 "${title}"` };
             }
             default:
               return { error: `未知的 action: ${action}` };
           }
         } catch (err) {
-          logAdminSkillError(
-            runtimeCtx,
-            `admin_group.manage_member.${action}`,
-            err,
-          );
+          logAdminSkillError(runtimeCtx, `admin_group.manage_member.${action}`, err);
           return { error: `执行 ${action} 失败: ${err}` };
         }
       },
@@ -240,87 +251,62 @@ const groupAdminSkill: AISkill = {
         },
         required: ["action"],
       },
-      handler: async (args: any, runtimeCtx?: any) => {
-        const runtime = await resolveGroupRuntime(runtimeCtx);
+      handler: async (args: unknown, runtimeCtx?: SkillRuntimeContext) => {
+        const runtime = resolveGroupRuntime(runtimeCtx);
         if ("error" in runtime) return { error: runtime.error };
-        const { bot, selfId, groupId } = runtime;
-        const action = String(args?.action || "");
+        const { bot, groupId, selfId } = runtime;
+        const action = String((args as { action?: unknown })?.action ?? "");
 
         try {
           switch (action) {
             case "set_whole_ban":
-              await bot.api("set_group_whole_ban", {
-                group_id: groupId,
-                enable: true,
-              });
+              await bot.invoke(groupSetWholeBan, { group_id: String(groupId), enable: true });
               return { success: true, message: "当前群已开启全体禁言" };
             case "unset_whole_ban":
-              await bot.api("set_group_whole_ban", {
-                group_id: groupId,
-                enable: false,
-              });
+              await bot.invoke(groupSetWholeBan, { group_id: String(groupId), enable: false });
               return { success: true, message: "当前群已关闭全体禁言" };
             case "set_group_name": {
-              const groupName = String(args?.group_name || "").trim();
-              if (!groupName)
-                return { error: "set_group_name 需要提供 group_name" };
-              await bot.api("set_group_name", {
-                group_id: groupId,
-                group_name: groupName,
-              });
-              return {
-                success: true,
-                message: `当前群名称已修改为 ${groupName}`,
-              };
+              const groupName = String((args as { group_name?: unknown })?.group_name ?? "").trim();
+              if (!groupName) return { error: "set_group_name 需要提供 group_name" };
+              await bot.invoke(groupSetName, { group_id: String(groupId), group_name: groupName });
+              return { success: true, message: `当前群名称已修改为 ${groupName}` };
             }
             case "set_self_card": {
-              const card = String(args?.card || "").trim();
+              const card = String((args as { card?: unknown })?.card ?? "").trim();
               if (!card) return { error: "set_self_card 需要提供 card" };
-              await bot.setGroupCard(groupId, selfId, card);
-              return {
-                success: true,
-                message: `Bot在当前群的群名片已修改为 ${card}`,
-              };
+              await bot.invoke(memberSetCard, {
+                group_id: String(groupId),
+                user_id: String(selfId),
+                card,
+              });
+              return { success: true, message: `Bot在当前群的群名片已修改为 ${card}` };
             }
             case "set_group_avatar": {
-              const messageId = Number(args?.message_id);
+              const messageId = Number((args as { message_id?: unknown })?.message_id);
               if (!Number.isFinite(messageId) || messageId <= 0) {
                 return { error: "set_group_avatar 需要提供有效的 message_id" };
               }
               const imageUrl = await getImageUrlByMessageId(bot, messageId);
-              if (!imageUrl) {
-                return { error: "指定 message_id 中未找到图片" };
-              }
-              await bot.api("set_group_portrait", {
-                group_id: groupId,
-                file: imageUrl,
-              });
+              if (!imageUrl) return { error: "指定 message_id 中未找到图片" };
+              await bot.invoke(groupSetPortrait, { group_id: String(groupId), file: imageUrl });
               return { success: true, message: "当前群头像已修改" };
             }
             case "recall_messages": {
-              const ids = Array.isArray(args?.message_ids)
-                ? args.message_ids
-                    .map((v: any) => Number(v))
-                    .filter((n: number) => Number.isFinite(n) && n !== 0)
+              const ids = Array.isArray((args as { message_ids?: unknown })?.message_ids)
+                ? ((args as { message_ids: unknown[] }).message_ids)
+                    .map((v) => Number(v))
+                    .filter((n) => Number.isFinite(n) && n !== 0)
                 : [];
               if (ids.length === 0) {
                 return { error: "recall_messages 需要提供至少一个 message_id" };
               }
-              const results: Array<{
-                message_id: number;
-                success: boolean;
-                error?: string;
-              }> = [];
+              const results: Array<{ message_id: number; success: boolean; error?: string }> = [];
               for (const id of ids) {
                 try {
-                  await bot.api("delete_msg", { message_id: id });
+                  await bot.invoke(messageRecall, { message_id: String(id) });
                   results.push({ message_id: id, success: true });
                 } catch (err) {
-                  results.push({
-                    message_id: id,
-                    success: false,
-                    error: String(err),
-                  });
+                  results.push({ message_id: id, success: false, error: String(err) });
                 }
               }
               const ok = results.filter((r) => r.success).length;
@@ -334,11 +320,7 @@ const groupAdminSkill: AISkill = {
               return { error: `未知的 action: ${action}` };
           }
         } catch (err) {
-          logAdminSkillError(
-            runtimeCtx,
-            `admin_group.manage_group.${action}`,
-            err,
-          );
+          logAdminSkillError(runtimeCtx, `admin_group.manage_group.${action}`, err);
           return { error: `执行 ${action} 失败: ${err}` };
         }
       },

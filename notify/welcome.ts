@@ -1,17 +1,20 @@
-import { type MiokiContext, wait } from "mioki";
-import { getPluginRuntimeState, type AIService } from "mioku";
+import { type MiokuContext, wait } from "mioku";
+import { getPluginRuntimeState, memberGetInfo, type AIService } from "mioku";
 import type { AdminConfig } from "../config";
 
 export async function resolveMemberName(
-  ctx: MiokiContext,
+  ctx: MiokuContext,
   groupId: number,
   userId: number,
   selfId: number,
 ): Promise<string> {
   try {
-    const member = await ctx
-      .pickBot(selfId)
-      .getGroupMemberInfo(groupId, userId);
+    const bot = ctx.pickBot(String(selfId));
+    if (!bot) return String(userId);
+    const member = await bot.invoke(memberGetInfo, {
+      group_id: String(groupId),
+      user_id: String(userId),
+    });
     return (
       String(member?.card || "").trim() ||
       String(member?.nickname || "").trim() ||
@@ -66,7 +69,7 @@ function normalizeGeneratedText(value: string): string {
 }
 
 async function flushBatch(options: {
-  ctx: MiokiContext;
+  ctx: MiokuContext;
   aiService?: AIService;
   config: AdminConfig;
   selfId: number;
@@ -152,7 +155,7 @@ async function flushBatch(options: {
 }
 
 async function sendSingleWelcome(options: {
-  ctx: MiokiContext;
+  ctx: MiokuContext;
   aiService?: AIService;
   config: AdminConfig;
   selfId: number;
@@ -192,17 +195,17 @@ async function sendSingleWelcome(options: {
     tryCustomPrompt,
   });
   if (!welcomeMessage) return;
-  const bot = ctx.pickBot(selfId);
+  const bot = ctx.pickBot(String(selfId));
   if (!bot) return;
   try {
-    await bot.sendGroupMsg(groupId, [ctx.segment.text(welcomeMessage)]);
+    await bot.sendMessage({ type: "group", group_id: String(groupId) }, [ctx.segment.text(welcomeMessage)]);
   } catch (error) {
     ctx.logger.warn(`发送入群欢迎失败: ${error}`);
   }
 }
 
 export async function triggerSingleWelcome(options: {
-  ctx: MiokiContext;
+  ctx: MiokuContext;
   aiService?: AIService;
   getConfig: () => AdminConfig;
   selfId: number;
@@ -241,7 +244,7 @@ export async function triggerSingleWelcome(options: {
 }
 
 export function registerWelcomeHandler(
-  ctx: MiokiContext,
+  ctx: MiokuContext,
   aiService: AIService | undefined,
   getConfig: () => AdminConfig,
   shouldSuppress?: (info: {
@@ -270,7 +273,7 @@ export function registerWelcomeHandler(
       if (userId === selfId) return;
 
       const groupName =
-        String(event?.group?.group_name || "").trim() || String(groupId);
+        String((event.raw as { group_name?: string } | undefined)?.group_name || "").trim() || String(groupId);
 
       if (
         shouldSuppress &&
@@ -300,10 +303,10 @@ export function registerWelcomeHandler(
           members: [{ userId, memberName }],
         });
         if (!welcomeMessage) return;
-        const bot = ctx.pickBot(selfId);
+        const bot = ctx.pickBot(String(selfId));
         if (!bot) return;
         try {
-          await bot.sendGroupMsg(groupId, [ctx.segment.text(welcomeMessage)]);
+          await bot.sendMessage({ type: "group", group_id: String(groupId) }, [ctx.segment.text(welcomeMessage)]);
         } catch (error) {
           ctx.logger.warn(`发送入群欢迎失败: ${error}`);
         }
@@ -348,10 +351,10 @@ export function registerWelcomeHandler(
           });
           if (!welcomeMessage) return;
 
-          const bot = ctx.pickBot(selfId);
+          const bot = ctx.pickBot(String(selfId));
           if (!bot) return;
           try {
-            await bot.sendGroupMsg(groupId, [ctx.segment.text(welcomeMessage)]);
+            await bot.sendMessage({ type: "group", group_id: String(groupId) }, [ctx.segment.text(welcomeMessage)]);
           } catch (error) {
             ctx.logger.warn(`发送入群欢迎失败: ${error}`);
           }

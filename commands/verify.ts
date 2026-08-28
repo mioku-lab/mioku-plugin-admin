@@ -1,4 +1,4 @@
-import type { MiokiContext } from "mioki";
+import type { MiokuContext } from "mioku";
 import { extractImageUrls, getAtUserId, getMemberRole } from "../config";
 import {
   getGroupVerifyConfig,
@@ -17,7 +17,7 @@ import {
 } from "../utils/prompt-image-store";
 
 export interface VerifyCommandOptions {
-  ctx: MiokiContext;
+  ctx: MiokuContext;
   getVerifyConfig: () => VerifyConfig;
   setVerifyConfig: (next: VerifyConfig) => Promise<void>;
   verifyController: VerifyController;
@@ -29,24 +29,29 @@ const VERIFY_MODE_LABELS: Record<string, string> = {
   chiral: "手性碳",
 };
 
-async function extractQuoteImageUrls(event: any): Promise<string[]> {
-  if (!event || typeof event.getQuoteMsg !== "function") return [];
-  const quoteMsg = await event.getQuoteMsg().catch(() => null);
+import type { MessageEvent } from "mioku";
+
+async function extractQuoteImageUrls(event: MessageEvent): Promise<string[]> {
+  const eventAny = event as MessageEvent & {
+    getQuoteMsg?: () => Promise<{ message?: unknown[] } | null>;
+  };
+  if (typeof eventAny.getQuoteMsg !== "function") return [];
+  const quoteMsg = await eventAny.getQuoteMsg().catch(() => null);
   if (!quoteMsg || !Array.isArray(quoteMsg.message)) return [];
-  return extractImageUrls(quoteMsg.message);
+  return extractImageUrls(quoteMsg.message as Parameters<typeof extractImageUrls>[0]);
 }
 
 export function registerVerifyCommands(options: VerifyCommandOptions) {
   const { ctx, getVerifyConfig, setVerifyConfig, verifyController } = options;
 
-  ctx.handle("message", async (event: any) => {
+  ctx.handle("message", async (event) => {
     const text = ctx.text(event)?.trim();
     if (!text) return;
     if (event.user_id === event.self_id) return;
 
     if (event.message_type !== "group") return;
-    const groupId = Number(event.group_id || 0);
-    if (!groupId) return;
+    const groupIdNum = event.group_id ? Number(event.group_id) : 0;
+    if (!groupIdNum) return;
 
     const isVerifyCommand =
       text === "/开启验证" ||
@@ -63,12 +68,12 @@ export function registerVerifyCommands(options: VerifyCommandOptions) {
       text.startsWith("#入群提示");
 
     try {
-      const selfId = event.self_id;
-      const bot = ctx.pickBot(selfId);
+      const selfId = Number(event.self_id);
+      const bot = ctx.pickBot(String(selfId));
       if (!bot) return;
 
       const isMaster = ctx.isOwner?.(event) ?? false;
-      const senderRole = await getMemberRole(bot, groupId, event.user_id);
+      const senderRole = await getMemberRole(bot, groupIdNum, Number(event.user_id));
       const hasAdminPermission =
         isMaster || senderRole === "owner" || senderRole === "admin";
 
@@ -86,13 +91,13 @@ export function registerVerifyCommands(options: VerifyCommandOptions) {
       };
 
       const groupName =
-        String(event?.group?.group_name || "").trim() || String(groupId);
+        String(event?.group?.group_name || "").trim() || String(groupIdNum);
 
       // /开启验证 | #开启验证
       if (text === "/开启验证" || text === "#开启验证") {
         if (!(await ensureAdminPermission())) return;
 
-        const botRole = await getMemberRole(bot, groupId, selfId);
+        const botRole = await getMemberRole(bot, groupIdNum, selfId);
         if (botRole !== "owner" && botRole !== "admin") {
           await replyAdminErrorNotice({
             ctx,
@@ -105,12 +110,12 @@ export function registerVerifyCommands(options: VerifyCommandOptions) {
         }
 
         const current = getVerifyConfig();
-        const groupCfg = getGroupVerifyConfig(current, groupId);
+        const groupCfg = getGroupVerifyConfig(current, groupIdNum);
         if (groupCfg.enabled) {
           await event.reply("本群已经开启验证啦～", true);
           return;
         }
-        const next = upsertGroupVerifyConfig(current, groupId, {
+        const next = upsertGroupVerifyConfig(current, groupIdNum, {
           enabled: true,
         });
         await setVerifyConfig(next);
@@ -123,12 +128,12 @@ export function registerVerifyCommands(options: VerifyCommandOptions) {
         if (!(await ensureAdminPermission())) return;
 
         const current = getVerifyConfig();
-        const groupCfg = getGroupVerifyConfig(current, groupId);
+        const groupCfg = getGroupVerifyConfig(current, groupIdNum);
         if (!groupCfg.enabled) {
           await event.reply("本群还没开启验证哦～", true);
           return;
         }
-        const next = upsertGroupVerifyConfig(current, groupId, {
+        const next = upsertGroupVerifyConfig(current, groupIdNum, {
           enabled: false,
         });
         await setVerifyConfig(next);
@@ -159,7 +164,7 @@ export function registerVerifyCommands(options: VerifyCommandOptions) {
         }
 
         const current = getVerifyConfig();
-        const next = upsertGroupVerifyConfig(current, groupId, { mode });
+        const next = upsertGroupVerifyConfig(current, groupIdNum, { mode });
         await setVerifyConfig(next);
         await event.reply(
           `验证模式已切换为：${VERIFY_MODE_LABELS[mode]}～`,
@@ -187,7 +192,7 @@ export function registerVerifyCommands(options: VerifyCommandOptions) {
         try {
           await verifyController.bypassVerification({
             selfId,
-            groupId,
+            groupId: groupIdNum,
             userId: atUser,
             groupName,
           });
@@ -221,7 +226,7 @@ export function registerVerifyCommands(options: VerifyCommandOptions) {
         }
 
         const isTargetMaster = ctx.isOwner?.(atUser) ?? false;
-        const targetRole = await getMemberRole(bot, groupId, atUser);
+        const targetRole = await getMemberRole(bot, groupIdNum, atUser);
         if (isTargetMaster || targetRole === "owner" || targetRole === "admin") {
           await replyAdminErrorNotice({
             ctx,
@@ -236,7 +241,7 @@ export function registerVerifyCommands(options: VerifyCommandOptions) {
         try {
           const started = await verifyController.restartVerification({
             selfId,
-            groupId,
+            groupId: groupIdNum,
             userId: atUser,
             groupName,
           });
@@ -263,7 +268,7 @@ export function registerVerifyCommands(options: VerifyCommandOptions) {
 
         const rawArg = text.replace(/^[/#]入群提示\s*/, "").trim();
         const current = getVerifyConfig();
-        const groupCfg = getGroupVerifyConfig(current, groupId);
+        const groupCfg = getGroupVerifyConfig(current, groupIdNum);
         const directImageUrls = extractImageUrls(event.message);
         const quoteImageUrls = await extractQuoteImageUrls(event).catch(() => []);
         const imageUrls =
@@ -275,14 +280,14 @@ export function registerVerifyCommands(options: VerifyCommandOptions) {
             return;
           }
           const removedFile = groupCfg.promptImage;
-          const next = upsertGroupVerifyConfig(current, groupId, {
+          const next = upsertGroupVerifyConfig(current, groupIdNum, {
             customPrompt: "",
             promptImage: "",
           });
           await setVerifyConfig(next);
-          await pruneGroupPromptImages(groupId, []).catch(() => {});
+          await pruneGroupPromptImages(groupIdNum, []).catch(() => {});
           ctx.logger.info(
-            `admin verify 关闭群 ${groupId} 自定义入群提示，清理图片 ${removedFile}`,
+            `admin verify 关闭群 ${groupIdNum} 自定义入群提示，清理图片 ${removedFile}`,
           );
           await event.reply("已关闭本群自定义入群提示～", true);
           return;
@@ -331,7 +336,7 @@ export function registerVerifyCommands(options: VerifyCommandOptions) {
         let imageNote = "";
         if (imageUrls.length) {
           const targetUrl = imageUrls[0];
-          const savedImage = await saveRemoteImageAsPrompt(groupId, targetUrl);
+          const savedImage = await saveRemoteImageAsPrompt(groupIdNum, targetUrl);
           if (savedImage) {
             const previousImage = groupCfg.promptImage;
             nextImage = savedImage.filename;
@@ -340,7 +345,7 @@ export function registerVerifyCommands(options: VerifyCommandOptions) {
               : `图片已设置（${savedImage.filename}）`;
             if (previousImage) {
               ctx.logger.info(
-                `admin verify 替换群 ${groupId} 入群提示图片：${previousImage} -> ${savedImage.filename}`,
+                `admin verify 替换群 ${groupIdNum} 入群提示图片：${previousImage} -> ${savedImage.filename}`,
               );
             }
           } else {
@@ -348,12 +353,12 @@ export function registerVerifyCommands(options: VerifyCommandOptions) {
           }
         }
 
-        const next = upsertGroupVerifyConfig(current, groupId, {
+        const next = upsertGroupVerifyConfig(current, groupIdNum, {
           customPrompt: nextPrompt,
           promptImage: nextImage,
         });
         await setVerifyConfig(next);
-        await pruneGroupPromptImages(groupId, nextImage ? [nextImage] : []).catch(
+        await pruneGroupPromptImages(groupIdNum, nextImage ? [nextImage] : []).catch(
           () => {},
         );
 

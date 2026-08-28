@@ -1,30 +1,18 @@
-import { botConfig, type MiokiContext } from "mioki";
 import type {
-  FriendRequestEvent,
-  GroupBanNoticeEvent,
-  GroupDecreaseNoticeEvent,
-  GroupInviteRequestEvent,
   MessageEvent,
-  PrivateMessageEvent,
-  RecvAtElement,
-  RecvElement,
-  RecvFaceElement,
-  RecvFileElement,
-  RecvForwardElement,
-  RecvImageElement,
-  RecvJsonElement,
-  RecvRecordElement,
-  RecvReplyElement,
-  RecvTextElement,
-  RecvVideoElement,
-} from "napcat-sdk";
+  MessageSegment,
+  MiokuContext,
+  NoticeEvent,
+  RequestEvent,
+} from "mioku";
+import { botConfig, messageGet } from "mioku";
 import type { AdminConfig } from "../config";
 import { formatDuration, getAvatarUrl, getGroupAvatarUrl } from "../config";
 
 interface NotifyPayload {
   avatarUrl?: string;
   lines: string[];
-  rawSegments?: any[];
+  rawSegments?: MessageSegment[];
 }
 
 interface PendingFriendRequest {
@@ -66,7 +54,7 @@ function getNotifyOwners(config: AdminConfig): number[] {
 
 /** 注册所有事件通知处理器 */
 export function registerNotificationHandlers(
-  ctx: MiokiContext,
+  ctx: MiokuContext,
   getConfig: () => AdminConfig,
 ) {
   const pendingFriendRequests: PendingFriendRequest[] = [];
@@ -121,8 +109,8 @@ export function registerNotificationHandlers(
     return true;
   }
 
-  function buildNotifyMessage(payload: NotifyPayload): any[] {
-    const message: any[] = [];
+  function buildNotifyMessage(payload: NotifyPayload): MessageSegment[] {
+    const message: MessageSegment[] = [];
     if (payload.avatarUrl) {
       message.push(ctx.segment.image(payload.avatarUrl));
     }
@@ -139,81 +127,59 @@ export function registerNotificationHandlers(
     return message.length > 0 ? message : [ctx.segment.text("")];
   }
 
-  function normalizeIncomingSegments(segments: RecvElement[]): any[] {
+  function normalizeIncomingSegments(segments: readonly MessageSegment[]): MessageSegment[] {
     if (!Array.isArray(segments)) return [];
     return segments
       .map((seg) => {
-        if (!seg || typeof seg !== "object") return null;
-        const type = String(seg.type || "");
-
-        if (!type) return null;
-
-        if (type === "text") {
-          const text = String((seg as RecvTextElement).text || "");
-          return text ? ctx.segment.text(text) : null;
-        }
-
-        if (type === "image" || type === "record" || type === "video") {
-          const mediaSeg = seg as
-            | RecvImageElement
-            | RecvRecordElement
-            | RecvVideoElement;
-          const source = String(mediaSeg.url || mediaSeg.file || "").trim();
-          if (!source) return null;
-          if (type === "image") {
-            return ctx.segment.image(source);
+        const data = seg.data as Record<string, unknown>;
+        switch (seg.type) {
+          case "text": {
+            const text = String(data.text ?? "").trim();
+            return text ? ctx.segment.text(text) : null;
           }
-          if (type === "record") {
-            return (ctx.segment as any).record(source);
+          case "image": {
+            const source = String(data.url ?? data.file ?? "").trim();
+            return source ? ctx.segment.image(source) : null;
           }
-          return (ctx.segment as any).video(source);
-        }
-
-        if (type === "file") {
-          const fileSeg = seg as RecvFileElement;
-          const source = String(fileSeg.url || fileSeg.file || "").trim();
-          if (!source) return null;
-          return (ctx.segment as any).file(source);
-        }
-
-        if (type === "at") {
-          const qq = (seg as RecvAtElement).qq;
-          if (qq == null) return null;
-          return ctx.segment.at(String(qq));
-        }
-
-        if (type === "face") {
-          const id = (seg as RecvFaceElement).id;
-          if (id == null) return null;
-          return ctx.segment.face(Number(id));
-        }
-
-        if (type === "reply") {
-          const id = (seg as RecvReplyElement).id;
-          if (id == null) return null;
-          return ctx.segment.reply(String(id));
-        }
-
-        if (type === "forward") {
-          const id = (seg as RecvForwardElement).id;
-          if (id == null) return null;
-          return (ctx.segment as any).forward?.(String(id)) ?? null;
-        }
-
-        if (type === "json") {
-          const data = (seg as RecvJsonElement).data;
-          if (type === "json" && ctx.segment.json) {
-            return ctx.segment.json(data);
+          case "record": {
+            const source = String(data.file ?? data.url ?? "").trim();
+            return source ? ctx.segment.raw("record", { file: source }) : null;
           }
-          return null;
+          case "video": {
+            const source = String(data.file ?? data.url ?? "").trim();
+            return source ? ctx.segment.raw("video", { file: source }) : null;
+          }
+          case "file": {
+            const source = String(data.file ?? data.url ?? "").trim();
+            return source ? ctx.segment.raw("file", { file: source }) : null;
+          }
+          case "at": {
+            const target = String(data.qq ?? data.target ?? "");
+            return target ? ctx.segment.at(target) : null;
+          }
+          case "face": {
+            const id = data.id;
+            return id == null ? null : ctx.segment.raw("face", { id: String(id) });
+          }
+          case "reply": {
+            const id = data.message_id ?? data.id;
+            return id == null ? null : ctx.segment.reply(String(id));
+          }
+          case "forward": {
+            const id = data.id;
+            return id == null ? null : ctx.segment.raw("forward", { id: String(id) });
+          }
+          case "json": {
+            return ctx.segment.raw("json", data);
+          }
+          default:
+            return seg;
         }
-
-        return null;
       })
-      .filter(Boolean);
+      .filter((seg): seg is MessageSegment => seg !== null);
   }
 
-  function isOwnerPrivateMessage(event: PrivateMessageEvent): boolean {
+  function isOwnerPrivateMessage(event: MessageEvent): boolean {
     if (ctx.isOwner?.(event)) {
       return true;
     }
@@ -224,19 +190,19 @@ export function registerNotificationHandlers(
     return owners().includes(userId);
   }
 
-  async function sendNotify(selfId: number, payload: NotifyPayload) {
-    const bot = ctx.pickBot(selfId);
+  async function sendNotify(selfId: number | string, payload: NotifyPayload) {
+    const bot = ctx.pickBot(String(selfId));
     if (!bot) return;
     for (const ownerId of owners()) {
       try {
-        await bot.sendPrivateMsg(ownerId, buildNotifyMessage(payload));
+        await bot.sendMessage({ type: "private", user_id: String(ownerId) }, buildNotifyMessage(payload));
       } catch (err) {
         ctx.logger.error(`admin notify owner ${ownerId} failed: ${err}`);
       }
     }
   }
 
-  function pushPendingFriendRequest(event: FriendRequestEvent) {
+  function pushPendingFriendRequest(event: RequestEvent) {
     const selfId = Number(event.self_id || 0);
     const userId = Number(event.user_id || 0);
     const flag = String(event.flag || "").trim();
@@ -250,7 +216,7 @@ export function registerNotificationHandlers(
     prunePendingRequests();
   }
 
-  function pushPendingGroupInvite(event: GroupInviteRequestEvent) {
+  function pushPendingGroupInvite(event: RequestEvent) {
     const selfId = Number(event.self_id || 0);
     const groupId = Number(event.group_id || 0);
     const userId = Number(event.user_id || 0);
@@ -299,12 +265,12 @@ export function registerNotificationHandlers(
     return undefined;
   }
 
-  function extractTextFromSegments(segments: RecvElement[]): string {
+  function extractTextFromSegments(segments: readonly MessageSegment[]): string {
     if (!Array.isArray(segments)) return "";
     return segments
       .map((seg) => {
         if (seg.type !== "text") return "";
-        return String((seg as RecvTextElement).text || "");
+        return String((seg.data as Record<string, unknown>).text ?? "");
       })
       .join("")
       .trim();
@@ -313,7 +279,7 @@ export function registerNotificationHandlers(
   async function resolveQuotedText(event: MessageEvent): Promise<string> {
     if (!event.quote_id) return "";
     try {
-      const quoted = await event.getQuoteMsg();
+      const quoted = await event.bot.invoke(messageGet, { message_id: String(event.quote_id) });
       return extractTextFromSegments(quoted?.message || []);
     } catch {
       return "";
@@ -369,13 +335,10 @@ export function registerNotificationHandlers(
     return null;
   }
 
-  function extractReplyPayloadSegments(event: MessageEvent): any[] {
-    return normalizeIncomingSegments(event?.message || []).filter(
-      (seg: any) => {
-        const type = String(seg?.type || "");
-        return type !== "reply";
-      },
-    );
+  function extractReplyPayloadSegments(event: MessageEvent): MessageSegment[] {
+    return normalizeIncomingSegments(event?.message || []).filter((seg) => {
+      return seg.type !== "reply";
+    });
   }
 
   function isApproveText(text: string): boolean {
@@ -389,7 +352,7 @@ export function registerNotificationHandlers(
   }
 
   async function notifyGroupInvite(
-    event: GroupInviteRequestEvent,
+    event: RequestEvent,
   ): Promise<void> {
     if (!getConfig().notifyGroupInvite) return;
 
@@ -417,23 +380,24 @@ export function registerNotificationHandlers(
     });
   }
 
-  async function notifyGroupBan(event: GroupBanNoticeEvent): Promise<void> {
+  async function notifyGroupBan(event: NoticeEvent): Promise<void> {
     const selfId = Number(event.self_id || 0);
     const groupId = Number(event.group_id || 0);
     const userId = Number(event.user_id || 0);
-    const duration = Number(event.duration || 0);
+    const rawBan = event.raw as { action_type?: string; duration?: number } | undefined;
+    const duration = Number(rawBan?.duration || 0);
     if (!selfId || !groupId) return;
     if (userId !== selfId) return;
 
     const operatorId = Number(event.operator_id || 0);
-    const isUnban = event.action_type === "lift_ban";
+    const isUnban = rawBan?.action_type === "lift_ban";
     if (isUnban) {
       if (!getConfig().notifyGroupUnban) return;
     } else if (!getConfig().notifyGroupBan) {
       return;
     }
 
-    const eventKey = `group-ban:${selfId}:${groupId}:${operatorId}:${duration}:${event.action_type}:${Number(event.time || 0)}`;
+    const eventKey = `group-ban:${selfId}:${groupId}:${operatorId}:${duration}:${rawBan?.action_type}:${Number(event.time || 0)}`;
     if (!markEventOnce(eventKey)) return;
 
     await sendNotify(selfId, {
@@ -449,14 +413,15 @@ export function registerNotificationHandlers(
   }
 
   async function notifyGroupKick(
-    event: GroupDecreaseNoticeEvent,
+    event: NoticeEvent,
   ): Promise<void> {
     if (!getConfig().notifyGroupKick) return;
 
     const selfId = Number(event.self_id || 0);
     const groupId = Number(event.group_id || 0);
     const userId = Number(event.user_id || 0);
-    const leaveType = String((event as any).action_type || "").trim();
+    const rawKick = event.raw as { action_type?: string } | undefined;
+    const leaveType = String(rawKick?.action_type || "").trim();
     if (!selfId || !groupId) return;
     if (userId !== selfId) return;
     if (leaveType !== "kick" && leaveType !== "kick_me") return;
@@ -473,13 +438,13 @@ export function registerNotificationHandlers(
   }
 
   // 好友私聊消息通知
-  ctx.handle("message.private", async (event: PrivateMessageEvent) => {
+  ctx.handle("message.private", async (event) => {
     if (!getConfig().notifyFriendMsg) return;
     if (event.user_id === event.self_id) return;
     if (isOwnerPrivateMessage(event)) return;
 
-    const userId = event.user_id;
-    const nickname = event.sender?.nickname || String(userId);
+    const userId = String(event.user_id ?? "");
+    const nickname = event.sender?.nickname || userId;
     const rawSegments = normalizeIncomingSegments(event.message || []);
 
     await sendNotify(event.self_id, {
@@ -496,11 +461,11 @@ export function registerNotificationHandlers(
   });
 
   // 好友申请通知
-  ctx.handle("request.friend", async (event: FriendRequestEvent) => {
+  ctx.handle("request.friend", async (event) => {
     pushPendingFriendRequest(event);
     if (!getConfig().notifyFriendRequest) return;
 
-    const userId = event.user_id;
+    const userId = String(event.user_id ?? "");
     const comment = event.comment || "无";
 
     await sendNotify(event.self_id, {
@@ -515,25 +480,25 @@ export function registerNotificationHandlers(
   });
 
   // 群邀请通知
-  ctx.handle("request.group.invite", async (event: GroupInviteRequestEvent) => {
+  ctx.handle("request.group.invite", async (event) => {
     await notifyGroupInvite(event);
   });
 
   // Bot被禁言通知
-  ctx.handle("notice.group.ban", async (event: GroupBanNoticeEvent) => {
+  ctx.handle("notice.group.ban", async (event) => {
     await notifyGroupBan(event);
   });
 
   // Bot被踢通知
   ctx.handle(
     "notice.group.decrease",
-    async (event: GroupDecreaseNoticeEvent) => {
+    async (event) => {
       await notifyGroupKick(event);
     },
   );
 
   // 引用回复处理
-  ctx.handle("message", async (event: MessageEvent) => {
+  ctx.handle("message", async (event) => {
     if (event.message_type !== "private") return;
     if (!ctx.isOwner?.(event)) return;
 
@@ -549,7 +514,7 @@ export function registerNotificationHandlers(
     const text = (ctx.text(event) || "").trim();
 
     const selfId = Number(event.self_id || 0);
-    const bot = ctx.pickBot(selfId);
+    const bot = ctx.pickBot(String(selfId));
     if (!bot) {
       await event.reply("Bot不可用", true);
       return;
@@ -562,7 +527,7 @@ export function registerNotificationHandlers(
         return;
       }
       try {
-        await bot.sendPrivateMsg(target.userId, payload);
+        await bot.sendMessage({ type: "private", user_id: String(target.userId) }, payload);
         await event.reply("done");
       } catch (err) {
         ctx.logger.error(
@@ -585,7 +550,7 @@ export function registerNotificationHandlers(
       }
 
       try {
-        await bot.api("set_friend_add_request", {
+        await bot.sendApi("set_friend_add_request", {
           flag: pending.flag,
           approve: isApproveText(text),
         });
@@ -605,8 +570,8 @@ export function registerNotificationHandlers(
         return;
       }
       try {
-        await bot.api("set_group_leave", {
-          group_id: target.groupId,
+        await bot.sendApi("set_group_leave", {
+          group_id: String(target.groupId),
           is_dismiss: false,
         });
         await event.reply("done");
@@ -636,7 +601,7 @@ export function registerNotificationHandlers(
       }
 
       try {
-        await bot.api("set_group_add_request", {
+        await bot.sendApi("set_group_add_request", {
           flag: pending.flag,
           sub_type: pending.subType || "invite",
           approve: isApproveText(text),

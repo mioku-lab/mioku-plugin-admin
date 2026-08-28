@@ -1,4 +1,15 @@
-import type { MiokiContext } from "mioki";
+import type { MiokuContext } from "mioku";
+import {
+  groupSetName,
+  groupSetPortrait,
+  groupSetWholeBan,
+  memberBan,
+  memberKick,
+  memberSetAdmin,
+  memberSetCard,
+  memberSetTitle,
+  messageRecall,
+} from "mioku";
 import {
   extractImageUrl,
   getAtUserId,
@@ -13,8 +24,8 @@ function formatGroupRole(role: string): string {
   return "群成员";
 }
 
-export function registerGroupAdminCommands(ctx: MiokiContext) {
-  ctx.handle("message", async (event: any) => {
+export function registerGroupAdminCommands(ctx: MiokuContext) {
+  ctx.handle("message", async (event) => {
     const text = ctx.text(event)?.trim();
     if (!text) return;
     if (event.user_id === event.self_id) return;
@@ -51,11 +62,11 @@ export function registerGroupAdminCommands(ctx: MiokiContext) {
       if (!bot) return;
 
       const isGroup = event.message_type === "group";
-      const groupId: number | undefined = isGroup ? event.group_id : undefined;
-      if (!isGroup || !groupId) return;
+      const groupIdNum = isGroup && event.group_id ? Number(event.group_id) : undefined;
+      if (!isGroup || !groupIdNum) return;
 
       const isMaster = ctx.isOwner?.(event) ?? false;
-      const senderRole = await getMemberRole(bot, groupId, event.user_id);
+      const senderRole = await getMemberRole(bot, groupIdNum, Number(event.user_id));
       const hasAdminPermission =
         isMaster || senderRole === "owner" || senderRole === "admin";
 
@@ -78,7 +89,7 @@ export function registerGroupAdminCommands(ctx: MiokiContext) {
         targetUserId: number,
         actionName: string,
       ) => {
-        const targetRole = await getMemberRole(bot, groupId, targetUserId);
+        const targetRole = await getMemberRole(bot, groupIdNum, targetUserId);
         if (senderRole !== targetRole) return true;
 
         await replyAdminErrorNotice({
@@ -90,10 +101,9 @@ export function registerGroupAdminCommands(ctx: MiokiContext) {
         return false;
       };
 
-      // 普通群员只能给自己设置头衔。
       if (text.startsWith("我要头衔")) {
         const atUser = getAtUserId(event.message);
-        if (atUser && atUser !== event.user_id) {
+        if (atUser != null && atUser !== Number(event.user_id)) {
           await event.reply("管好自己呗～", true);
           return;
         }
@@ -105,11 +115,11 @@ export function registerGroupAdminCommands(ctx: MiokiContext) {
         }
 
         try {
-          await (bot as any).setGroupSpecialTitle(
-            groupId,
-            event.user_id,
+          await bot.invoke(memberSetTitle, {
+            group_id: String(groupIdNum),
+            user_id: String(event.user_id),
             title,
-          );
+          });
           await replyDone();
         } catch (err) {
           await replyAdminErrorNotice({
@@ -123,7 +133,6 @@ export function registerGroupAdminCommands(ctx: MiokiContext) {
         return;
       }
 
-      // 改头衔
       if (text.startsWith("改头衔") || text.startsWith("/改头衔")) {
         if (!(await ensureAdminPermission())) return;
 
@@ -166,7 +175,11 @@ export function registerGroupAdminCommands(ctx: MiokiContext) {
         }
 
         try {
-          await (bot as any).setGroupSpecialTitle(groupId, targetUser, title);
+          await bot.invoke(memberSetTitle, {
+            group_id: String(groupIdNum),
+            user_id: String(targetUser),
+            title,
+          });
           await replyDone();
         } catch (err) {
           await replyAdminErrorNotice({
@@ -201,9 +214,9 @@ export function registerGroupAdminCommands(ctx: MiokiContext) {
         }
         if (!(await ensureDangerousTargetPermission(atUser, "踢出"))) return;
         try {
-          await bot.api("set_group_kick", {
-            group_id: groupId,
-            user_id: atUser,
+          await bot.invoke(memberKick, {
+            group_id: String(groupIdNum),
+            user_id: String(atUser),
           });
           await replyDone();
         } catch (err) {
@@ -251,7 +264,11 @@ export function registerGroupAdminCommands(ctx: MiokiContext) {
         const durationStr = rest.replace(/@\d+\s*/, "").trim();
         const durationSec = parseDuration(durationStr) || 10 * 60;
         try {
-          await bot.setGroupBan(groupId, atUser, durationSec);
+          await bot.invoke(memberBan, {
+            group_id: String(groupIdNum),
+            user_id: String(atUser),
+            duration: durationSec,
+          });
           await replyDone();
         } catch (err) {
           await replyAdminErrorNotice({
@@ -293,7 +310,11 @@ export function registerGroupAdminCommands(ctx: MiokiContext) {
           return;
         }
         try {
-          await bot.setGroupBan(groupId, atUser, 0);
+          await bot.invoke(memberBan, {
+            group_id: String(groupIdNum),
+            user_id: String(atUser),
+            duration: 0,
+          });
           await replyDone();
         } catch (err) {
           await replyAdminErrorNotice({
@@ -326,9 +347,9 @@ export function registerGroupAdminCommands(ctx: MiokiContext) {
           return;
         }
         try {
-          await bot.api("set_group_admin", {
-            group_id: groupId,
-            user_id: atUser,
+          await bot.invoke(memberSetAdmin, {
+            group_id: String(groupIdNum),
+            user_id: String(atUser),
             enable: true,
           });
           await replyDone();
@@ -347,8 +368,8 @@ export function registerGroupAdminCommands(ctx: MiokiContext) {
       if (text === "/全体禁言") {
         if (!(await ensureAdminPermission())) return;
         try {
-          await bot.api("set_group_whole_ban", {
-            group_id: groupId,
+          await bot.invoke(groupSetWholeBan, {
+            group_id: String(groupIdNum),
             enable: true,
           });
           await replyDone();
@@ -367,8 +388,8 @@ export function registerGroupAdminCommands(ctx: MiokiContext) {
       if (text === "/全体解禁") {
         if (!(await ensureAdminPermission())) return;
         try {
-          await bot.api("set_group_whole_ban", {
-            group_id: groupId,
+          await bot.invoke(groupSetWholeBan, {
+            group_id: String(groupIdNum),
             enable: false,
           });
           await replyDone();
@@ -385,8 +406,9 @@ export function registerGroupAdminCommands(ctx: MiokiContext) {
       }
 
       if (text.startsWith("改群名片") || text.startsWith("/改群名片")) {
-        if (!isGroup || !groupId) {
-          return event.reply("这个要在群里用哦～", true);
+        if (!isGroup || !groupIdNum) {
+          await event.reply("这个要在群里用哦～", true);
+      return;
         }
         if (!(await ensureAdminPermission())) return;
         const card = text.replace(/^\/?改群名片\s*/, "").trim();
@@ -400,7 +422,11 @@ export function registerGroupAdminCommands(ctx: MiokiContext) {
           return;
         }
         try {
-          await bot.setGroupCard(groupId, selfId, card);
+          await bot.invoke(memberSetCard, {
+            group_id: String(groupIdNum),
+            user_id: String(selfId),
+            card,
+          });
           await event.reply("done");
         } catch (err) {
           await replyAdminErrorNotice({
@@ -415,8 +441,9 @@ export function registerGroupAdminCommands(ctx: MiokiContext) {
       }
 
       if (text.startsWith("/改群昵称")) {
-        if (!isGroup || !groupId) {
-          return event.reply("这个要在群里用哦～", true);
+        if (!isGroup || !groupIdNum) {
+          await event.reply("这个要在群里用哦～", true);
+      return;
         }
         if (!(await ensureAdminPermission())) return;
         const groupName = text.replace(/^\/改群昵称\s*/, "").trim();
@@ -431,8 +458,8 @@ export function registerGroupAdminCommands(ctx: MiokiContext) {
           return;
         }
         try {
-          await bot.api("set_group_name", {
-            group_id: groupId,
+          await bot.invoke(groupSetName, {
+            group_id: String(groupIdNum),
             group_name: groupName,
           });
           await event.reply("done");
@@ -449,8 +476,9 @@ export function registerGroupAdminCommands(ctx: MiokiContext) {
       }
 
       if (text.startsWith("/改群头像")) {
-        if (!isGroup || !groupId) {
-          return event.reply("这个要在群里用哦～", true);
+        if (!isGroup || !groupIdNum) {
+          await event.reply("这个要在群里用哦～", true);
+      return;
         }
         if (!(await ensureAdminPermission())) return;
         const imageUrl = extractImageUrl(event.message);
@@ -465,8 +493,8 @@ export function registerGroupAdminCommands(ctx: MiokiContext) {
           return;
         }
         try {
-          await bot.api("set_group_portrait", {
-            group_id: groupId,
+          await bot.invoke(groupSetPortrait, {
+            group_id: String(groupIdNum),
             file: imageUrl,
           });
           await event.reply("done");
@@ -484,8 +512,9 @@ export function registerGroupAdminCommands(ctx: MiokiContext) {
 
       // 撤回 — 引用一条消息后，bot 撤回该消息
       if (text === "/撤回" || text === "撤回") {
-        if (!isGroup || !groupId) {
-          return event.reply("这个要在群里用哦～", true);
+        if (!isGroup || !groupIdNum) {
+          await event.reply("这个要在群里用哦～", true);
+      return;
         }
         if (!(await ensureAdminPermission())) return;
 
@@ -502,7 +531,7 @@ export function registerGroupAdminCommands(ctx: MiokiContext) {
         }
 
         try {
-          await bot.api("delete_msg", { message_id: quotedId });
+          await bot.invoke(messageRecall, { message_id: quotedId });
           await replyDone();
         } catch (err) {
           await replyAdminErrorNotice({

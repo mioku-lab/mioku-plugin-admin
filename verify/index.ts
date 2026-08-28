@@ -1,4 +1,5 @@
-import type { MiokiContext } from "mioki";
+import type { Bot, MiokuContext, RouteEvent } from "mioku";
+import { memberKick, messageRecall } from "mioku";
 import { existsSync } from "fs";
 import { getMemberRole } from "../config";
 import { resolveMemberName, triggerSingleWelcome } from "../notify/welcome";
@@ -50,19 +51,19 @@ export function createVerifyController(
     }
   }
 
-  async function recallMessage(bot: any, messageId: number) {
+  async function recallMessage(bot: Bot, messageId: number) {
     try {
-      await bot.api("delete_msg", { message_id: messageId });
+      await bot.invoke(messageRecall, { message_id: String(messageId) });
     } catch (err) {
       ctx.logger.warn(`admin verify 撤回消息失败: ${err}`);
     }
   }
 
-  async function kickMember(bot: any, groupId: number, userId: number) {
+  async function kickMember(bot: Bot, groupId: number, userId: number) {
     try {
-      await bot.api("set_group_kick", {
-        group_id: groupId,
-        user_id: userId,
+      await bot.invoke(memberKick, {
+        group_id: String(groupId),
+        user_id: String(userId),
         reject_add_request: false,
       });
     } catch (err) {
@@ -78,20 +79,21 @@ export function createVerifyController(
     }
   }
 
-  async function passVerification(p: PendingVerify) {
+  async function passVerification(p: PendingVerify, bot?: Bot) {
     if (p.passed) return;
     p.passed = true;
     clearTimers(p);
     pending.delete(pendingKey(p.selfId, p.groupId, p.userId));
 
-    if (p.mode === "reaction" && p.promptMessageId) {
-      const bot = ctx.pickBot(p.selfId);
-      if (bot) {
-        try {
-          await bot.addReaction(p.promptMessageId, PASS_REACTION_EMOJI_ID);
-        } catch (err) {
-          ctx.logger.warn(`admin verify 通过表态失败: ${err}`);
-        }
+    if (p.mode === "reaction" && p.promptMessageId && bot) {
+      try {
+        await bot.sendApi("set_msg_emoji_like", {
+          message_id: String(p.promptMessageId),
+          emoji_id: PASS_REACTION_EMOJI_ID,
+          set: true,
+        });
+      } catch (err) {
+        ctx.logger.warn(`admin verify 通过表态失败: ${err}`);
       }
     }
 
@@ -102,7 +104,7 @@ export function createVerifyController(
         groupId: p.groupId,
         userId: p.userId,
         groupName: p.groupName,
-      });
+      }, bot);
       if (customSent) return;
       await triggerSingleWelcome({
         ctx,
@@ -120,33 +122,33 @@ export function createVerifyController(
     }
   }
 
-  async function failKick(p: PendingVerify, reason: string) {
+  async function failKick(p: PendingVerify, reason: string, bot?: Bot) {
     clearTimers(p);
     pending.delete(pendingKey(p.selfId, p.groupId, p.userId));
     const cfg = getVerifyConfig();
     if (!cfg.kickOnFail) return;
-    const bot = ctx.pickBot(p.selfId);
-    if (!bot) return;
+    const target = bot ?? ctx.pickBot(String(p.selfId));
+    if (!target) return;
     ctx.logger.info(
       `admin verify 踢出群 ${p.groupId} 用户 ${p.userId}（${reason}）`,
     );
-    await kickMember(bot, p.groupId, p.userId);
+    await kickMember(target, p.groupId, p.userId);
   }
 
-  async function timeoutExpire(p: PendingVerify) {
+  async function timeoutExpire(p: PendingVerify, bot?: Bot) {
     p.timeoutTimer = null;
     const cfg = getVerifyConfig();
     if (!cfg.kickOnTimeout) {
       pending.delete(pendingKey(p.selfId, p.groupId, p.userId));
       return;
     }
-    const bot = ctx.pickBot(p.selfId);
-    if (!bot) {
+    const target = bot ?? ctx.pickBot(String(p.selfId));
+    if (!target) {
       pending.delete(pendingKey(p.selfId, p.groupId, p.userId));
       return;
     }
     try {
-      await bot.sendGroupMsg(p.groupId, [
+      await target.sendMessage({ type: "group", group_id: String(p.groupId) }, [
         ctx.segment.at(String(p.userId)),
         ctx.segment.text(" 验证超时啦，下次再来哦～"),
       ]);
@@ -154,7 +156,7 @@ export function createVerifyController(
       ctx.logger.warn(`admin verify 超时提示发送失败: ${err}`);
     }
     ctx.logger.info(`admin verify 超时踢出群 ${p.groupId} 用户 ${p.userId}`);
-    await kickMember(bot, p.groupId, p.userId);
+    await kickMember(target, p.groupId, p.userId);
     pending.delete(pendingKey(p.selfId, p.groupId, p.userId));
   }
 
@@ -166,13 +168,13 @@ export function createVerifyController(
     const groupCfg = getGroupVerifyConfig(cfg, info.groupId);
     if (!groupCfg.enabled) return false;
 
-    const bot = ctx.pickBot(info.selfId);
+    const bot = ctx.pickBot(String(info.selfId));
     if (!bot) return false;
 
     const botRole = await getMemberRole(bot, info.groupId, info.selfId);
     if (botRole !== "owner" && botRole !== "admin") {
       try {
-        await bot.sendGroupMsg(info.groupId, [
+        await bot.sendMessage({ type: "group", group_id: String(info.groupId) }, [
           ctx.segment.text("我在不是管理员，没法入群验证啦，本群验证已关闭~"),
         ]);
       } catch (err) {
@@ -232,7 +234,7 @@ export function createVerifyController(
 
     entry.timeoutTimer = setTimeout(
       () => {
-        void timeoutExpire(entry);
+        void timeoutExpire(entry, bot);
       },
       Math.max(1000, cfg.verifyTimeoutMs),
     );
@@ -240,7 +242,7 @@ export function createVerifyController(
     return true;
   }
 
-  async function onGroupMessage(event: any) {
+  async function onGroupMessage(event: RouteEvent<"message.group">) {
     if (event?.message_type !== "group") return;
     const selfId = Number(event?.self_id || 0);
     const groupId = Number(event?.group_id || 0);
@@ -255,23 +257,23 @@ export function createVerifyController(
     const cfg = getVerifyConfig();
     const text = ctx.text(event) || "";
     const messageId = Number(event?.message_id || 0);
-    const bot = ctx.pickBot(selfId);
+    const bot = event.bot;
 
     if (p.mode === "number" && isNumberAnswerCorrect(p, text)) {
-      await passVerification(p);
+      await passVerification(p, bot);
       return;
     }
 
     if (p.mode === "chiral") {
       const result = checkChiralAnswer(p, text);
       if (result.status === "pass") {
-        await passVerification(p);
+        await passVerification(p, bot);
         return;
       }
       if (result.status === "progress") {
         if (bot) {
           try {
-            await bot.sendGroupMsg(groupId, [
+            await bot.sendMessage({ type: "group", group_id: String(groupId) }, [
               ctx.segment.at(String(userId)),
               ctx.segment.text(` 答对一部分啦，还差 ${result.remaining} 个哦~`),
             ]);
@@ -289,24 +291,25 @@ export function createVerifyController(
 
     p.invalidCount += 1;
     if (p.invalidCount >= cfg.maxInvalidMessages) {
-      await failKick(p, `连续 ${cfg.maxInvalidMessages} 次无关消息`);
+      await failKick(p, `连续 ${cfg.maxInvalidMessages} 次无关消息`, bot);
     }
   }
 
-  async function onGroupReaction(event: any) {
+  async function onGroupReaction(event: RouteEvent<"notice.group.reaction">) {
     const selfId = Number(event?.self_id || 0);
     const groupId = Number(event?.group_id || 0);
     const userId = Number(event?.user_id || 0);
     if (!selfId || !groupId || !userId) return;
     if (userId === selfId) return;
-    if (event?.is_add === false) return;
+    const raw = event.raw as { is_add?: boolean } | undefined;
+    if (raw?.is_add === false) return;
 
     const key = pendingKey(selfId, groupId, userId);
     const p = pending.get(key);
     if (!p || p.passed || p.mode !== "reaction") return;
 
     if (isReactionPass(p, event)) {
-      await passVerification(p);
+      await passVerification(p, event.bot);
     }
   }
 
@@ -357,11 +360,14 @@ export function createVerifyController(
     removePending(pendingKey(info.selfId, info.groupId, info.userId));
   }
 
-  async function trySendCustomWelcome(info: MemberJoinInfo): Promise<boolean> {
+  async function trySendCustomWelcome(
+    info: MemberJoinInfo,
+    bot?: Bot,
+  ): Promise<boolean> {
     const groupCfg = getGroupVerifyConfig(getVerifyConfig(), info.groupId);
     if (!hasCustomPrompt(groupCfg)) return false;
-    const bot = ctx.pickBot(info.selfId);
-    if (!bot) return false;
+    const target = bot ?? ctx.pickBot(String(info.selfId));
+    if (!target) return false;
     const segments: any[] = [];
     const prompt = String(groupCfg.customPrompt || "").trim();
     if (prompt) {
@@ -380,7 +386,7 @@ export function createVerifyController(
     }
     if (!segments.length) return false;
     try {
-      await bot.sendGroupMsg(info.groupId, segments);
+      await target.sendMessage({ type: "group", group_id: String(info.groupId) }, segments);
       return true;
     } catch (err) {
       ctx.logger.error(`admin verify 发送自定义入群提示失败: ${err}`);
