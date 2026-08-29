@@ -1,15 +1,5 @@
 import type { MiokuContext } from "mioku";
-import {
-  groupSetName,
-  groupSetPortrait,
-  groupSetWholeBan,
-  memberBan,
-  memberKick,
-  memberSetAdmin,
-  memberSetCard,
-  memberSetTitle,
-  messageRecall,
-} from "mioku";
+
 import {
   extractImageUrl,
   getAtUserId,
@@ -58,7 +48,7 @@ export function registerGroupAdminCommands(ctx: MiokuContext) {
 
     try {
       const selfId = event.self_id;
-      const bot = ctx.pickBot(selfId);
+      const bot = event.bot;
       if (!bot) return;
 
       const isGroup = event.message_type === "group";
@@ -115,11 +105,7 @@ export function registerGroupAdminCommands(ctx: MiokuContext) {
         }
 
         try {
-          await bot.invoke(memberSetTitle, {
-            group_id: String(groupIdNum),
-            user_id: String(event.user_id),
-            title,
-          });
+          await bot.setMemberTitle(groupIdNum, event.user_id!, title);
           await replyDone();
         } catch (err) {
           await replyAdminErrorNotice({
@@ -175,11 +161,7 @@ export function registerGroupAdminCommands(ctx: MiokuContext) {
         }
 
         try {
-          await bot.invoke(memberSetTitle, {
-            group_id: String(groupIdNum),
-            user_id: String(targetUser),
-            title,
-          });
+          await bot.setMemberTitle(groupIdNum, targetUser, title);
           await replyDone();
         } catch (err) {
           await replyAdminErrorNotice({
@@ -214,10 +196,7 @@ export function registerGroupAdminCommands(ctx: MiokuContext) {
         }
         if (!(await ensureDangerousTargetPermission(atUser, "踢出"))) return;
         try {
-          await bot.invoke(memberKick, {
-            group_id: String(groupIdNum),
-            user_id: String(atUser),
-          });
+          await bot.kickMember(groupIdNum, atUser);
           await replyDone();
         } catch (err) {
           await replyAdminErrorNotice({
@@ -264,11 +243,7 @@ export function registerGroupAdminCommands(ctx: MiokuContext) {
         const durationStr = rest.replace(/@\d+\s*/, "").trim();
         const durationSec = parseDuration(durationStr) || 10 * 60;
         try {
-          await bot.invoke(memberBan, {
-            group_id: String(groupIdNum),
-            user_id: String(atUser),
-            duration: durationSec,
-          });
+          await bot.banMember(groupIdNum, atUser, durationSec);
           await replyDone();
         } catch (err) {
           await replyAdminErrorNotice({
@@ -310,11 +285,7 @@ export function registerGroupAdminCommands(ctx: MiokuContext) {
           return;
         }
         try {
-          await bot.invoke(memberBan, {
-            group_id: String(groupIdNum),
-            user_id: String(atUser),
-            duration: 0,
-          });
+          await bot.banMember(groupIdNum, atUser, 0);
           await replyDone();
         } catch (err) {
           await replyAdminErrorNotice({
@@ -347,11 +318,7 @@ export function registerGroupAdminCommands(ctx: MiokuContext) {
           return;
         }
         try {
-          await bot.invoke(memberSetAdmin, {
-            group_id: String(groupIdNum),
-            user_id: String(atUser),
-            enable: true,
-          });
+          await bot.setMemberAdmin(groupIdNum, atUser, true);
           await replyDone();
         } catch (err) {
           await replyAdminErrorNotice({
@@ -368,10 +335,7 @@ export function registerGroupAdminCommands(ctx: MiokuContext) {
       if (text === "/全体禁言") {
         if (!(await ensureAdminPermission())) return;
         try {
-          await bot.invoke(groupSetWholeBan, {
-            group_id: String(groupIdNum),
-            enable: true,
-          });
+          await bot.setGroupWholeBan(groupIdNum, true);
           await replyDone();
         } catch (err) {
           await replyAdminErrorNotice({
@@ -388,10 +352,7 @@ export function registerGroupAdminCommands(ctx: MiokuContext) {
       if (text === "/全体解禁") {
         if (!(await ensureAdminPermission())) return;
         try {
-          await bot.invoke(groupSetWholeBan, {
-            group_id: String(groupIdNum),
-            enable: false,
-          });
+          await bot.setGroupWholeBan(groupIdNum, false);
           await replyDone();
         } catch (err) {
           await replyAdminErrorNotice({
@@ -422,11 +383,7 @@ export function registerGroupAdminCommands(ctx: MiokuContext) {
           return;
         }
         try {
-          await bot.invoke(memberSetCard, {
-            group_id: String(groupIdNum),
-            user_id: String(selfId),
-            card,
-          });
+          await bot.setMemberCard(groupIdNum, selfId, card);
           await event.reply("done");
         } catch (err) {
           await replyAdminErrorNotice({
@@ -458,10 +415,7 @@ export function registerGroupAdminCommands(ctx: MiokuContext) {
           return;
         }
         try {
-          await bot.invoke(groupSetName, {
-            group_id: String(groupIdNum),
-            group_name: groupName,
-          });
+          await bot.setGroupName(groupIdNum, groupName);
           await event.reply("done");
         } catch (err) {
           await replyAdminErrorNotice({
@@ -493,10 +447,7 @@ export function registerGroupAdminCommands(ctx: MiokuContext) {
           return;
         }
         try {
-          await bot.invoke(groupSetPortrait, {
-            group_id: String(groupIdNum),
-            file: imageUrl,
-          });
+          await bot.setGroupPortrait(groupIdNum, imageUrl);
           await event.reply("done");
         } catch (err) {
           await replyAdminErrorNotice({
@@ -531,7 +482,7 @@ export function registerGroupAdminCommands(ctx: MiokuContext) {
         }
 
         try {
-          await bot.invoke(messageRecall, { message_id: quotedId });
+          await bot.recallMessage(quotedId);
           await replyDone();
         } catch (err) {
           await replyAdminErrorNotice({

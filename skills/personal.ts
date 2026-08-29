@@ -1,19 +1,11 @@
 import type { AISkill, Bot, MessageEvent } from "mioku";
-import {
-  avatarSet,
-  friendDelete,
-  friendGetList,
-  groupGetList,
-  groupLeave,
-  profileSet,
-} from "mioku";
+
 import { getImageUrlByMessageId } from "./message-image";
 
 import type { MessageSegment } from "mioku";
 
 interface SkillRuntimeContext {
   ctx?: {
-    pickBot: (id: string) => Bot | undefined;
     segment: { text(text: string): MessageSegment };
     logger?: { error?: (...args: unknown[]) => void };
   };
@@ -100,9 +92,8 @@ const personalSkill: AISkill = {
         const ctx = runtimeCtx?.ctx;
         if (!ctx) return { error: "无法获取上下文" };
         const event = runtimeCtx?.event ?? runtimeCtx?.rawEvent;
-        const selfId = event?.self_id;
-        if (!selfId) return { error: "无法获取Bot ID" };
-        const bot = ctx.pickBot(String(selfId));
+        if (!event) return { error: "无法获取事件" };
+        const bot = event.bot;
         if (!bot) return { error: "Bot不可用" };
         const a = args as Record<string, unknown>;
         const action = String(a?.action ?? "");
@@ -116,24 +107,24 @@ const personalSkill: AISkill = {
               }
               const imageUrl = await getImageUrlByMessageId(bot, messageId);
               if (!imageUrl) return { error: "指定 message_id 中未找到图片" };
-              await bot.invoke(avatarSet, { file: imageUrl });
+              await bot.setAvatar(imageUrl);
               return { success: true, message: "Bot头像已修改" };
             }
             case "set_nickname": {
               const nickname = String(a?.nickname ?? "").trim();
               if (!nickname) return { error: "set_nickname 需要提供 nickname" };
-              await bot.invoke(profileSet, { nickname });
+              await bot.setProfile({ nickname });
               return { success: true, message: `Bot昵称已修改为: ${nickname}` };
             }
             case "set_signature": {
               const personalNote = String(a?.personal_note ?? "").trim();
               if (!personalNote) return { error: "set_signature 需要提供 personal_note" };
-              await bot.invoke(profileSet, { personal_note: personalNote });
+              await bot.setProfile({ personal_note: personalNote });
               return { success: true, message: "Bot个性签名已修改" };
             }
             case "set_gender": {
               const sex = parseProfileSex(String(a?.gender ?? ""));
-              await bot.invoke(profileSet, { sex });
+              await bot.setProfile({ sex });
               const genderMap: Record<number, string> = { 0: "无", 1: "男", 2: "女" };
               return { success: true, message: `Bot性别已修改为: ${genderMap[sex]}` };
             }
@@ -142,7 +133,7 @@ const personalSkill: AISkill = {
               const content = String(a?.content ?? "");
               if (!userId || !content) return { error: "send_private 需要提供 user_id 和 content" };
               await bot.sendMessage(
-                { type: "private", user_id: String(userId) },
+                { type: "private", user_id: userId},
                 [ctx.segment.text(content)],
               );
               return { success: true, message: `已发送私聊消息给 ${userId}` };
@@ -152,14 +143,14 @@ const personalSkill: AISkill = {
               const content = String(a?.content ?? "");
               if (!groupId || !content) return { error: "send_group 需要提供 group_id 和 content" };
               await bot.sendMessage(
-                { type: "group", group_id: String(groupId) },
+                { type: "group", group_id: groupId},
                 [ctx.segment.text(content)],
               );
               return { success: true, message: `已发送群消息到 ${groupId}` };
             }
             case "list_friends": {
               if (event?.message_type === "group") return { error: "在私聊使用试试看吧～" };
-              const friendList = await bot.invoke(friendGetList, {});
+              const friendList = await bot.getFriendList();
               if (!Array.isArray(friendList)) return { friends: [] };
               return {
                 friends: friendList.map((f: { user_id?: unknown; nickname?: unknown; remark?: unknown }) => ({
@@ -171,7 +162,7 @@ const personalSkill: AISkill = {
             }
             case "list_groups": {
               if (event?.message_type === "group") return { error: "在私聊使用试试看吧～" };
-              const groupList = await bot.invoke(groupGetList, {});
+              const groupList = await bot.getGroupList();
               if (!Array.isArray(groupList)) return { groups: [] };
               return {
                 groups: groupList.map((g: { group_id?: unknown; group_name?: unknown; member_count?: unknown }) => ({
@@ -184,13 +175,13 @@ const personalSkill: AISkill = {
             case "delete_friend": {
               const userId = Number(a?.user_id);
               if (!userId) return { error: "delete_friend 需要提供 user_id" };
-              await bot.invoke(friendDelete, { user_id: String(userId) });
+              await bot.deleteFriend(userId);
               return { success: true, message: `已删除好友 ${userId}` };
             }
             case "leave_group": {
               const groupId = Number(a?.group_id);
               if (!groupId) return { error: "leave_group 需要提供 group_id" };
-              await bot.invoke(groupLeave, { group_id: String(groupId), is_dismiss: false });
+              await bot.leaveGroup(groupId, false);
               return { success: true, message: `已退出群 ${groupId}` };
             }
             default:

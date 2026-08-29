@@ -1,20 +1,10 @@
 import type { AISkill, Bot, MessageEvent } from "mioku";
-import {
-  groupSetName,
-  groupSetPortrait,
-  groupSetWholeBan,
-  memberBan,
-  memberKick,
-  memberSetAdmin,
-  memberSetCard,
-  memberSetTitle,
-  messageRecall,
-} from "mioku";
+
 import { getMemberRole } from "../config";
 import { getImageUrlByMessageId } from "./message-image";
 
 interface GroupRuntime {
-  ctx: { pickBot: (id: string) => Bot | undefined; logger?: { error?: (...args: unknown[]) => void } };
+  ctx: { logger?: { error?: (...args: unknown[]) => void } };
   event: MessageEvent;
   bot: Bot;
   groupId: number;
@@ -40,7 +30,7 @@ function resolveGroupRuntime(runtimeCtx: SkillRuntimeContext | undefined):
   const selfId = Number(event?.self_id ?? 0);
   if (!selfId) return { error: "无法获取Bot ID" };
 
-  const bot = ctx.pickBot(String(selfId));
+  const bot = event?.bot;
   if (!bot) return { error: "Bot不可用" };
 
   return { ctx, event: event!, bot, groupId, selfId };
@@ -128,7 +118,7 @@ const groupAdminSkill: AISkill = {
               if (!userId) return { error: "kick 需要提供 user_id" };
               const permErr = await checkDangerousTargetPermission(runtime, userId);
               if (permErr) return { error: permErr };
-              await bot.invoke(memberKick, { group_id: String(groupId), user_id: String(userId) });
+              await bot.kickMember(groupId, userId);
               return { success: true, message: `已将 ${userId} 移出当前群` };
             }
             case "mute": {
@@ -140,41 +130,25 @@ const groupAdminSkill: AISkill = {
                 Number((args as { duration?: unknown })?.duration) > 0
                   ? Number((args as { duration?: unknown }).duration)
                   : 10 * 60;
-              await bot.invoke(memberBan, {
-                group_id: String(groupId),
-                user_id: String(userId),
-                duration,
-              });
+              await bot.banMember(groupId, userId, duration);
               return { success: true, message: `已禁言 ${userId} ${duration}秒` };
             }
             case "unmute": {
               const userId = Number((args as { user_id?: unknown })?.user_id);
               if (!userId) return { error: "unmute 需要提供 user_id" };
-              await bot.invoke(memberBan, {
-                group_id: String(groupId),
-                user_id: String(userId),
-                duration: 0,
-              });
+              await bot.banMember(groupId, userId, 0);
               return { success: true, message: `已解除 ${userId} 的禁言` };
             }
             case "set_admin": {
               const userId = Number((args as { user_id?: unknown })?.user_id);
               if (!userId) return { error: "set_admin 需要提供 user_id" };
-              await bot.invoke(memberSetAdmin, {
-                group_id: String(groupId),
-                user_id: String(userId),
-                enable: true,
-              });
+              await bot.setMemberAdmin(groupId, userId, true);
               return { success: true, message: `已将 ${userId} 设为当前群的管理员` };
             }
             case "unset_admin": {
               const userId = Number((args as { user_id?: unknown })?.user_id);
               if (!userId) return { error: "unset_admin 需要提供 user_id" };
-              await bot.invoke(memberSetAdmin, {
-                group_id: String(groupId),
-                user_id: String(userId),
-                enable: false,
-              });
+              await bot.setMemberAdmin(groupId, userId, false);
               return { success: true, message: `已取消 ${userId} 在当前群的管理员` };
             }
             case "set_title": {
@@ -183,11 +157,7 @@ const groupAdminSkill: AISkill = {
               if (!userId || !title) {
                 return { error: "set_title 需要提供 user_id 和 title" };
               }
-              await bot.invoke(memberSetTitle, {
-                group_id: String(groupId),
-                user_id: String(userId),
-                title,
-              });
+              await bot.setMemberTitle(groupId, userId, title);
               return { success: true, message: `已将 ${userId} 的头衔设为 "${title}"` };
             }
             case "set_self_title": {
@@ -195,11 +165,7 @@ const groupAdminSkill: AISkill = {
               if (!userId) return { error: "无法获取当前用户ID" };
               const title = String((args as { title?: unknown })?.title ?? "").trim();
               if (!title) return { error: "set_self_title 需要提供 title" };
-              await bot.invoke(memberSetTitle, {
-                group_id: String(groupId),
-                user_id: String(userId),
-                title,
-              });
+              await bot.setMemberTitle(groupId, userId, title);
               return { success: true, message: `已将你的头衔设为 "${title}"` };
             }
             default:
@@ -260,25 +226,21 @@ const groupAdminSkill: AISkill = {
         try {
           switch (action) {
             case "set_whole_ban":
-              await bot.invoke(groupSetWholeBan, { group_id: String(groupId), enable: true });
+              await bot.setGroupWholeBan(groupId, true);
               return { success: true, message: "当前群已开启全体禁言" };
             case "unset_whole_ban":
-              await bot.invoke(groupSetWholeBan, { group_id: String(groupId), enable: false });
+              await bot.setGroupWholeBan(groupId, false);
               return { success: true, message: "当前群已关闭全体禁言" };
             case "set_group_name": {
               const groupName = String((args as { group_name?: unknown })?.group_name ?? "").trim();
               if (!groupName) return { error: "set_group_name 需要提供 group_name" };
-              await bot.invoke(groupSetName, { group_id: String(groupId), group_name: groupName });
+              await bot.setGroupName(groupId, groupName);
               return { success: true, message: `当前群名称已修改为 ${groupName}` };
             }
             case "set_self_card": {
               const card = String((args as { card?: unknown })?.card ?? "").trim();
               if (!card) return { error: "set_self_card 需要提供 card" };
-              await bot.invoke(memberSetCard, {
-                group_id: String(groupId),
-                user_id: String(selfId),
-                card,
-              });
+              await bot.setMemberCard(groupId, selfId, card);
               return { success: true, message: `Bot在当前群的群名片已修改为 ${card}` };
             }
             case "set_group_avatar": {
@@ -288,7 +250,7 @@ const groupAdminSkill: AISkill = {
               }
               const imageUrl = await getImageUrlByMessageId(bot, messageId);
               if (!imageUrl) return { error: "指定 message_id 中未找到图片" };
-              await bot.invoke(groupSetPortrait, { group_id: String(groupId), file: imageUrl });
+              await bot.setGroupPortrait(groupId, imageUrl);
               return { success: true, message: "当前群头像已修改" };
             }
             case "recall_messages": {
@@ -303,7 +265,7 @@ const groupAdminSkill: AISkill = {
               const results: Array<{ message_id: number; success: boolean; error?: string }> = [];
               for (const id of ids) {
                 try {
-                  await bot.invoke(messageRecall, { message_id: String(id) });
+                  await bot.recallMessage(id);
                   results.push({ message_id: id, success: true });
                 } catch (err) {
                   results.push({ message_id: id, success: false, error: String(err) });

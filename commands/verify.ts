@@ -69,7 +69,7 @@ export function registerVerifyCommands(options: VerifyCommandOptions) {
 
     try {
       const selfId = Number(event.self_id);
-      const bot = ctx.pickBot(String(selfId));
+      const bot = event.bot;
       if (!bot) return;
 
       const isMaster = ctx.isOwner?.(event) ?? false;
@@ -239,12 +239,15 @@ export function registerVerifyCommands(options: VerifyCommandOptions) {
         }
 
         try {
-          const started = await verifyController.restartVerification({
-            selfId,
-            groupId: groupIdNum,
-            userId: atUser,
-            groupName,
-          });
+          const started = await verifyController.restartVerification(
+            {
+              selfId,
+              groupId: groupIdNum,
+              userId: atUser,
+              groupName,
+            },
+            bot,
+          );
           if (!started) {
             await event.reply("本群还没开启验证哦～", true);
           }

@@ -5,7 +5,7 @@ import type {
   NoticeEvent,
   RequestEvent,
 } from "mioku";
-import { botConfig, messageGet } from "mioku";
+import {botConfig} from "mioku";
 import type { AdminConfig } from "../config";
 import { formatDuration, getAvatarUrl, getGroupAvatarUrl } from "../config";
 
@@ -20,6 +20,8 @@ interface PendingFriendRequest {
   userId: number;
   flag: string;
   createdAt: number;
+  approve: () => Promise<void>;
+  reject: (reason?: string) => Promise<void>;
 }
 
 interface PendingGroupInvite {
@@ -29,6 +31,8 @@ interface PendingGroupInvite {
   flag: string;
   subType: string;
   createdAt: number;
+  approve: () => Promise<void>;
+  reject: (reason?: string) => Promise<void>;
 }
 
 const PENDING_TTL_MS = 24 * 60 * 60 * 1000;
@@ -190,12 +194,11 @@ export function registerNotificationHandlers(
     return owners().includes(userId);
   }
 
-  async function sendNotify(selfId: number | string, payload: NotifyPayload) {
-    const bot = ctx.pickBot(String(selfId));
+  async function sendNotify(bot: import("mioku").Bot | undefined, payload: NotifyPayload) {
     if (!bot) return;
     for (const ownerId of owners()) {
       try {
-        await bot.sendMessage({ type: "private", user_id: String(ownerId) }, buildNotifyMessage(payload));
+        await bot.sendMessage({ type: "private", user_id: ownerId}, buildNotifyMessage(payload));
       } catch (err) {
         ctx.logger.error(`admin notify owner ${ownerId} failed: ${err}`);
       }
@@ -212,6 +215,8 @@ export function registerNotificationHandlers(
       userId,
       flag,
       createdAt: Date.now(),
+      approve: () => event.approve(),
+      reject: (reason?: string) => event.reject(reason),
     });
     prunePendingRequests();
   }
@@ -230,6 +235,8 @@ export function registerNotificationHandlers(
       flag,
       subType,
       createdAt: Date.now(),
+      approve: () => event.approve(),
+      reject: (reason?: string) => event.reject(reason),
     });
     prunePendingRequests();
   }
@@ -279,7 +286,7 @@ export function registerNotificationHandlers(
   async function resolveQuotedText(event: MessageEvent): Promise<string> {
     if (!event.quote_id) return "";
     try {
-      const quoted = await event.bot.invoke(messageGet, { message_id: String(event.quote_id) });
+      const quoted = await event.bot.getMessage(event.quote_id);
       return extractTextFromSegments(quoted?.message || []);
     } catch {
       return "";
@@ -368,7 +375,7 @@ export function registerNotificationHandlers(
     pushPendingGroupInvite(event);
 
     const comment = event.comment || "无";
-    await sendNotify(selfId, {
+    await sendNotify(event.bot, {
       avatarUrl: getGroupAvatarUrl(groupId),
       lines: [
         "[群邀请]",
@@ -400,7 +407,7 @@ export function registerNotificationHandlers(
     const eventKey = `group-ban:${selfId}:${groupId}:${operatorId}:${duration}:${rawBan?.action_type}:${Number(event.time || 0)}`;
     if (!markEventOnce(eventKey)) return;
 
-    await sendNotify(selfId, {
+    await sendNotify(event.bot, {
       avatarUrl: getGroupAvatarUrl(groupId),
       lines: [
         isUnban ? "[Bot被解除禁言]" : "[Bot被禁言]",
@@ -430,7 +437,7 @@ export function registerNotificationHandlers(
     const eventKey = `group-kick:${selfId}:${groupId}:${operatorId}:${leaveType}:${Number(event.time || 0)}`;
     if (!markEventOnce(eventKey)) return;
 
-    await sendNotify(selfId, {
+    await sendNotify(event.bot, {
       avatarUrl:
         operatorId > 0 ? getAvatarUrl(operatorId) : getGroupAvatarUrl(groupId),
       lines: ["[Bot被踢]", `群号：${groupId}`, `操作者QQ：${operatorId}`],
@@ -447,7 +454,7 @@ export function registerNotificationHandlers(
     const nickname = event.sender?.nickname || userId;
     const rawSegments = normalizeIncomingSegments(event.message || []);
 
-    await sendNotify(event.self_id, {
+    await sendNotify(event.bot, {
       avatarUrl: getAvatarUrl(userId),
       lines: [
         "[好友消息]",
@@ -468,7 +475,7 @@ export function registerNotificationHandlers(
     const userId = String(event.user_id ?? "");
     const comment = event.comment || "无";
 
-    await sendNotify(event.self_id, {
+    await sendNotify(event.bot, {
       avatarUrl: getAvatarUrl(userId),
       lines: [
         "[好友申请]",
@@ -514,7 +521,7 @@ export function registerNotificationHandlers(
     const text = (ctx.text(event) || "").trim();
 
     const selfId = Number(event.self_id || 0);
-    const bot = ctx.pickBot(String(selfId));
+    const bot = event.bot;
     if (!bot) {
       await event.reply("Bot不可用", true);
       return;
@@ -527,7 +534,7 @@ export function registerNotificationHandlers(
         return;
       }
       try {
-        await bot.sendMessage({ type: "private", user_id: String(target.userId) }, payload);
+        await bot.sendMessage({ type: "private", user_id: target.userId}, payload);
         await event.reply("done");
       } catch (err) {
         ctx.logger.error(
@@ -550,10 +557,11 @@ export function registerNotificationHandlers(
       }
 
       try {
-        await bot.sendApi("set_friend_add_request", {
-          flag: pending.flag,
-          approve: isApproveText(text),
-        });
+        if (isApproveText(text)) {
+          await pending.approve();
+        } else {
+          await pending.reject();
+        }
         await event.reply("done");
       } catch (err) {
         ctx.logger.error(
@@ -570,10 +578,7 @@ export function registerNotificationHandlers(
         return;
       }
       try {
-        await bot.sendApi("set_group_leave", {
-          group_id: String(target.groupId),
-          is_dismiss: false,
-        });
+        await bot.leaveGroup(String(target.groupId), false);
         await event.reply("done");
       } catch (err) {
         ctx.logger.error(
@@ -601,11 +606,11 @@ export function registerNotificationHandlers(
       }
 
       try {
-        await bot.sendApi("set_group_add_request", {
-          flag: pending.flag,
-          sub_type: pending.subType || "invite",
-          approve: isApproveText(text),
-        });
+        if (isApproveText(text)) {
+          await pending.approve();
+        } else {
+          await pending.reject();
+        }
         await event.reply("done");
       } catch (err) {
         ctx.logger.error(

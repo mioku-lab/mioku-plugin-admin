@@ -45,7 +45,7 @@ export async function prepareChiral(
   cfg: VerifyConfig,
   p: PendingVerify,
 ): Promise<boolean> {
-  const bot = ctx.pickBot(String(p.selfId));
+  const bot = p.bot;
   if (!bot) return false;
   try {
     const captcha = await fetchChiralCaptcha(cfg.chiralApiUrl, cfg.chiralDifficulty);
@@ -55,7 +55,7 @@ export async function prepareChiral(
       "{count}",
       String(captcha.regions.length),
     );
-    await bot.sendMessage({ type: "group", group_id: String(p.groupId) }, [
+    await bot.sendMessage({ type: "group", group_id: p.groupId}, [
       ctx.segment.at(String(p.userId)),
       ctx.segment.text(` ${prompt}`),
       ctx.segment.image(captcha.imageDataUrl),

@@ -21,13 +21,13 @@ export async function sendNumberPrompt(
   cfg: VerifyConfig,
   p: PendingVerify,
 ): Promise<void> {
-  const bot = ctx.pickBot(String(p.selfId));
+  const bot = p.bot;
   if (!bot) return;
   const { question, answer } = genNumberQuestion();
   p.numberAnswer = answer;
   const prompt = cfg.numberPrompt.replace("{question}", question);
   try {
-    await bot.sendMessage({ type: "group", group_id: String(p.groupId) }, [
+    await bot.sendMessage({ type: "group", group_id: p.groupId}, [
       ctx.segment.at(String(p.userId)),
       ctx.segment.text(` ${prompt}`),
     ]);

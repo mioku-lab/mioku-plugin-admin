@@ -1,5 +1,5 @@
-import type { Bot, MessageEvent, MiokuContext, MessageSegment } from "mioku";
-import { createGroupRef, friendDelete, friendGetList, groupGetList } from "mioku";
+import type { Bot, MessageEvent, MessageInput, MessageTarget, MiokuContext, MessageSegment } from "mioku";
+import {createGroupRef} from "mioku";
 import { extractImageUrl } from "../config";
 import { replyAdminErrorNotice } from "./notice";
 
@@ -111,55 +111,6 @@ function buildForwardPayloadAfterCommand(
   return payload;
 }
 
-function toForwardMessages(bot: Bot, nodes: readonly unknown[]): unknown[] {
-  const normalizeElements = (elements: readonly unknown[]): unknown[] => {
-    const asRecord = (element: unknown): unknown => {
-      if (!element || typeof element !== "object") return element
-      if ("type" in element && "data" in element) return element
-      if ("type" in element) {
-        const { type, ...data } = element as { type: string } & Record<string, unknown>
-        return { type, data }
-      }
-      return element
-    }
-    const sendable = (bot as unknown as { normalizeSendable?: (v: unknown[]) => unknown[] }).normalizeSendable
-    if (typeof sendable === "function") return sendable(elements as unknown[])
-    return elements.map(asRecord)
-  };
-
-  return nodes.map((node) => {
-    const rawNode =
-      node && typeof node === "object" && "type" in node && "data" in node
-        ? { type: (node as { type: string }).type, ...(node as { data: Record<string, unknown> }).data }
-        : node;
-    if (!rawNode || typeof rawNode !== "object" || (rawNode as { type?: unknown }).type !== "node") {
-      return normalizeElements([rawNode])[0];
-    }
-
-    const nodeObj = rawNode as { type: string; user_id?: string; nickname?: string; id?: string; content?: unknown };
-    const content = Array.isArray(nodeObj.content) ? nodeObj.content : [];
-    if (nodeObj.id) {
-      return {
-        type: "node",
-        data: {
-          user_id: nodeObj.user_id,
-          nickname: nodeObj.nickname,
-          id: nodeObj.id,
-        },
-      };
-    }
-
-    return {
-      type: "node",
-      data: {
-        user_id: nodeObj.user_id,
-        nickname: nodeObj.nickname,
-        content: normalizeElements(content),
-      },
-    };
-  });
-}
-
 async function sendForwardByEvent(options: {
   bot: Bot;
   event: MessageEvent;
@@ -168,20 +119,33 @@ async function sendForwardByEvent(options: {
   const { bot, event, messages } = options;
   const chunkSize = 50;
 
-  for (let i = 0; i < messages.length; i += chunkSize) {
-    const chunk = messages.slice(i, i + chunkSize);
-    if (event.message_type === "group" && event.group_id) {
-      await bot.sendApi("send_group_forward_msg", {
-        group_id: String(event.group_id),
-        messages: chunk,
-      });
-      continue;
-    }
+  const nodes = (messages as Array<{
+    type?: string;
+    data?: { user_id?: string; nickname?: string; content?: unknown };
+  }>)
+    .map((node) => ({
+      user_id: String(node?.data?.user_id ?? event.user_id ?? ""),
+      nickname:
+        String(node?.data?.nickname || "") ||
+        String(node?.data?.user_id ?? event.user_id ?? "转发"),
+      content: Array.isArray(node?.data?.content)
+        ? node.data.content
+        : [node?.data?.content],
+    }))
+    .filter((node) => node.content.length > 0)
+    .map((node) => ({
+      user_id: node.user_id,
+      nickname: node.nickname,
+      content: node.content as MessageInput,
+    }));
 
-    await bot.sendApi("send_private_forward_msg", {
-      user_id: String(event.user_id),
-      messages: chunk,
-    });
+  const target: MessageTarget =
+    event.message_type === "group" && event.group_id
+      ? { type: "group", group_id: event.group_id }
+      : { type: "private", user_id: event.user_id ?? "" };
+
+  for (let i = 0; i < nodes.length; i += chunkSize) {
+    await bot.sendForward(target, nodes.slice(i, i + chunkSize));
   }
 }
 
@@ -194,7 +158,7 @@ export function registerPersonalCommands(ctx: MiokuContext) {
     const isMaster = ctx.isOwner?.(event) ?? false;
 
     const selfId = event.self_id;
-    const bot = ctx.pickBot(selfId);
+    const bot = event.bot;
     if (!bot) return;
 
     const isGroup = event.message_type === "group";
@@ -210,7 +174,7 @@ export function registerPersonalCommands(ctx: MiokuContext) {
       return;
       }
       try {
-        await bot.sendApi("set_qq_avatar", { file: imageUrl });
+        await bot.setAvatar(imageUrl);
         await event.reply("done");
       } catch (err) {
         await replyAdminErrorNotice({
@@ -236,7 +200,7 @@ export function registerPersonalCommands(ctx: MiokuContext) {
       return;
       }
       try {
-        await bot.sendApi("set_qq_profile", { nickname });
+        await bot.setProfile({ nickname });
         await event.reply("done");
       } catch (err) {
         await replyAdminErrorNotice({
@@ -261,7 +225,7 @@ export function registerPersonalCommands(ctx: MiokuContext) {
       return;
       }
       try {
-        await bot.sendApi("set_qq_profile", { personal_note: personalNote });
+        await bot.setProfile({ personal_note: personalNote });
         await event.reply("done");
       } catch (err) {
         await replyAdminErrorNotice({
@@ -283,7 +247,7 @@ export function registerPersonalCommands(ctx: MiokuContext) {
       const genderText = text.replace(/^\/改性别\s*/, "").trim();
       const sex = parseProfileSex(genderText);
       try {
-        await bot.sendApi("set_qq_profile", { sex });
+        await bot.setProfile({ sex });
         await event.reply("done");
       } catch (err) {
         await replyAdminErrorNotice({
@@ -313,7 +277,7 @@ export function registerPersonalCommands(ctx: MiokuContext) {
         return;
       }
       try {
-        await bot.invoke(friendDelete, { user_id: String(qq) });
+        await bot.deleteFriend(qq);
         await event.reply("done");
       } catch (err) {
         await replyAdminErrorNotice({
@@ -392,7 +356,7 @@ export function registerPersonalCommands(ctx: MiokuContext) {
         return;
       }
       try {
-        await bot.sendMessage({ type: "private", user_id: String(targetUser) }, payload);
+        await bot.sendMessage({ type: "private", user_id: targetUser}, payload);
         await event.reply("done");
       } catch (err) {
         await replyAdminErrorNotice({
@@ -441,7 +405,7 @@ export function registerPersonalCommands(ctx: MiokuContext) {
         return;
       }
       try {
-        await bot.sendMessage({ type: "group", group_id: String(targetGroup) }, payload);
+        await bot.sendMessage({ type: "group", group_id: targetGroup}, payload);
         await event.reply("done");
       } catch (err) {
         await replyAdminErrorNotice({
@@ -465,7 +429,7 @@ export function registerPersonalCommands(ctx: MiokuContext) {
         return;
       }
       try {
-        const friendList = await bot.invoke(friendGetList, {});
+        const friendList = await bot.getFriendList();
         if (!Array.isArray(friendList) || friendList.length === 0) {
           await replyAdminErrorNotice({
             ctx,
@@ -477,7 +441,7 @@ export function registerPersonalCommands(ctx: MiokuContext) {
         }
         const nodes = friendList.map((friend) =>
           ctx.segment.raw("node", {
-            user_id: String(friend.user_id),
+            user_id: friend.user_id,
             nickname:
               friend.nickname || friend.remark || String(friend.user_id),
             content: [
@@ -513,7 +477,7 @@ export function registerPersonalCommands(ctx: MiokuContext) {
         return;
       }
       try {
-        const groupList = await bot.invoke(groupGetList, {});
+        const groupList = await bot.getGroupList();
         if (!Array.isArray(groupList) || groupList.length === 0) {
           await replyAdminErrorNotice({
             ctx,
@@ -525,7 +489,7 @@ export function registerPersonalCommands(ctx: MiokuContext) {
         }
         const nodes = groupList.map((group) =>
           ctx.segment.raw("node", {
-            user_id: String(selfId),
+            user_id: selfId,
             nickname: String(selfId),
             content: [
               ctx.segment.image(

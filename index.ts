@@ -91,8 +91,8 @@ export default definePlugin({
       ctx,
       aiService,
       getConfig,
-      (info) => verifyController.handleMemberJoin(info),
-      (info) => verifyController.trySendCustomWelcome(info),
+      (info, bot) => verifyController.handleMemberJoin(info, bot),
+      (info, bot) => verifyController.trySendCustomWelcome(info, bot),
     );
 
     // 注册入群验证指令

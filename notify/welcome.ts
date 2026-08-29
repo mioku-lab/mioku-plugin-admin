@@ -1,20 +1,16 @@
 import { type MiokuContext, wait } from "mioku";
-import { getPluginRuntimeState, memberGetInfo, type AIService } from "mioku";
+import { getPluginRuntimeState, type AIService } from "mioku";
 import type { AdminConfig } from "../config";
 
 export async function resolveMemberName(
   ctx: MiokuContext,
+  bot: import("mioku").Bot | undefined,
   groupId: number,
   userId: number,
-  selfId: number,
 ): Promise<string> {
   try {
-    const bot = ctx.pickBot(String(selfId));
     if (!bot) return String(userId);
-    const member = await bot.invoke(memberGetInfo, {
-      group_id: String(groupId),
-      user_id: String(userId),
-    });
+    const member = await bot.getMemberInfo(groupId, userId);
     return (
       String(member?.card || "").trim() ||
       String(member?.nickname || "").trim() ||
@@ -46,7 +42,7 @@ function getBatchMap(): Map<string, BatchState> {
   return state[RUNTIME_KEY] as Map<string, BatchState>;
 }
 
-function batchKey(selfId: number, groupId: number): string {
+function batchKey(selfId: string | number, groupId: number): string {
   return `${selfId}:${groupId}`;
 }
 
@@ -72,17 +68,18 @@ async function flushBatch(options: {
   ctx: MiokuContext;
   aiService?: AIService;
   config: AdminConfig;
-  selfId: number;
+  selfId: string | number;
   groupId: number;
   groupName: string;
   members: PendingMember[];
   promptInjections?: { content: string; title?: string }[];
+  bot?: import("mioku").Bot;
   tryCustomPrompt?: (info: {
-    selfId: number;
+    selfId: string | number;
     groupId: number;
     userId: number;
     groupName: string;
-  }) => Promise<boolean>;
+  }, bot?: import("mioku").Bot) => Promise<boolean>;
 }): Promise<string> {
   const {
     ctx,
@@ -93,6 +90,7 @@ async function flushBatch(options: {
     groupName,
     members,
     promptInjections,
+    bot,
     tryCustomPrompt,
   } = options;
   if (!members.length) return "";
@@ -100,12 +98,15 @@ async function flushBatch(options: {
   if (tryCustomPrompt) {
     let anyCustom = false;
     for (const m of members) {
-      const handled = await tryCustomPrompt({
-        selfId,
-        groupId,
-        userId: m.userId,
-        groupName,
-      });
+      const handled = await tryCustomPrompt(
+        {
+          selfId,
+          groupId,
+          userId: m.userId,
+          groupName,
+        },
+        bot,
+      );
       if (handled) anyCustom = true;
     }
     if (anyCustom) return "";
@@ -158,18 +159,19 @@ async function sendSingleWelcome(options: {
   ctx: MiokuContext;
   aiService?: AIService;
   config: AdminConfig;
-  selfId: number;
+  selfId: string | number;
   groupId: number;
   groupName: string;
   userId: number;
   memberName: string;
   promptInjections?: { content: string; title?: string }[];
+  bot?: import("mioku").Bot;
   tryCustomPrompt?: (info: {
-    selfId: number;
+    selfId: string | number;
     groupId: number;
     userId: number;
     groupName: string;
-  }) => Promise<boolean>;
+  }, bot?: import("mioku").Bot) => Promise<boolean>;
 }): Promise<void> {
   const {
     ctx,
@@ -181,6 +183,7 @@ async function sendSingleWelcome(options: {
     userId,
     memberName,
     promptInjections,
+    bot,
     tryCustomPrompt,
   } = options;
   const welcomeMessage = await flushBatch({
@@ -192,13 +195,13 @@ async function sendSingleWelcome(options: {
     groupName,
     members: [{ userId, memberName }],
     promptInjections,
+    bot,
     tryCustomPrompt,
   });
   if (!welcomeMessage) return;
-  const bot = ctx.pickBot(String(selfId));
   if (!bot) return;
   try {
-    await bot.sendMessage({ type: "group", group_id: String(groupId) }, [ctx.segment.text(welcomeMessage)]);
+    await bot.sendMessage({ type: "group", group_id: groupId}, [ctx.segment.text(welcomeMessage)]);
   } catch (error) {
     ctx.logger.warn(`发送入群欢迎失败: ${error}`);
   }
@@ -208,26 +211,26 @@ export async function triggerSingleWelcome(options: {
   ctx: MiokuContext;
   aiService?: AIService;
   getConfig: () => AdminConfig;
-  selfId: number;
+  selfId: string | number;
   groupId: number;
   groupName: string;
   userId: number;
   memberName?: string;
   promptInjections?: { content: string; title?: string }[];
   tryCustomPrompt?: (info: {
-    selfId: number;
+    selfId: string | number;
     groupId: number;
     userId: number;
     groupName: string;
-  }) => Promise<boolean>;
-}): Promise<void> {
+  }, bot?: import("mioku").Bot) => Promise<boolean>;
+}, bot?: import("mioku").Bot): Promise<void> {
   const memberName =
     options.memberName ||
     (await resolveMemberName(
       options.ctx,
+      bot,
       options.groupId,
       options.userId,
-      options.selfId,
     ));
   await sendSingleWelcome({
     ctx: options.ctx,
@@ -239,6 +242,7 @@ export async function triggerSingleWelcome(options: {
     userId: options.userId,
     memberName,
     promptInjections: options.promptInjections,
+    bot,
     tryCustomPrompt: options.tryCustomPrompt,
   });
 }
@@ -248,17 +252,17 @@ export function registerWelcomeHandler(
   aiService: AIService | undefined,
   getConfig: () => AdminConfig,
   shouldSuppress?: (info: {
-    selfId: number;
+    selfId: string | number;
     groupId: number;
     userId: number;
     groupName: string;
-  }) => Promise<boolean> | boolean,
+  }, bot?: import("mioku").Bot) => Promise<boolean> | boolean,
   tryCustomPrompt?: (info: {
-    selfId: number;
+    selfId: string | number;
     groupId: number;
     userId: number;
     groupName: string;
-  }) => Promise<boolean>,
+  }, bot?: import("mioku").Bot) => Promise<boolean>,
 ): () => void {
   const batches = getBatchMap();
 
@@ -266,18 +270,19 @@ export function registerWelcomeHandler(
     "notice.group.increase",
     async (event) => {
       const cfg = getConfig();
-      const selfId = Number(event?.self_id || ctx.self_id);
+      const bot = event.bot;
+      const selfId = event?.self_id || ctx.self_id || "";
       const groupId = Number(event?.group_id || 0);
       const userId = Number(event?.user_id || 0);
       if (!groupId || !userId) return;
-      if (userId === selfId) return;
+      if (selfId != null && String(userId) === String(selfId)) return;
 
       const groupName =
         String((event.raw as { group_name?: string } | undefined)?.group_name || "").trim() || String(groupId);
 
       if (
         shouldSuppress &&
-        (await shouldSuppress({ selfId, groupId, userId, groupName }))
+        (await shouldSuppress({ selfId, groupId, userId, groupName }, bot))
       ) {
         return;
       }
@@ -289,9 +294,9 @@ export function registerWelcomeHandler(
       if (batchWindowMs === 0) {
         const memberName = await resolveMemberName(
           ctx,
+          bot,
           groupId,
           userId,
-          selfId,
         );
         const welcomeMessage = await flushBatch({
           ctx,
@@ -301,12 +306,12 @@ export function registerWelcomeHandler(
           groupId,
           groupName,
           members: [{ userId, memberName }],
+          bot,
         });
         if (!welcomeMessage) return;
-        const bot = ctx.pickBot(String(selfId));
         if (!bot) return;
         try {
-          await bot.sendMessage({ type: "group", group_id: String(groupId) }, [ctx.segment.text(welcomeMessage)]);
+          await bot.sendMessage({ type: "group", group_id: groupId}, [ctx.segment.text(welcomeMessage)]);
         } catch (error) {
           ctx.logger.warn(`发送入群欢迎失败: ${error}`);
         }
@@ -323,7 +328,7 @@ export function registerWelcomeHandler(
         state.groupName = groupName;
       }
 
-      const memberName = await resolveMemberName(ctx, groupId, userId, selfId);
+      const memberName = await resolveMemberName(ctx, bot, groupId, userId);
       if (!state.members.some((m) => m.userId === userId)) {
         state.members.push({ userId, memberName });
       }
@@ -347,14 +352,14 @@ export function registerWelcomeHandler(
             groupId,
             groupName: pending.groupName,
             members: pending.members,
+            bot,
             tryCustomPrompt,
           });
           if (!welcomeMessage) return;
 
-          const bot = ctx.pickBot(String(selfId));
           if (!bot) return;
           try {
-            await bot.sendMessage({ type: "group", group_id: String(groupId) }, [ctx.segment.text(welcomeMessage)]);
+            await bot.sendMessage({ type: "group", group_id: groupId}, [ctx.segment.text(welcomeMessage)]);
           } catch (error) {
             ctx.logger.warn(`发送入群欢迎失败: ${error}`);
           }

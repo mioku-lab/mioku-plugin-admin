@@ -102,7 +102,7 @@ export function parseDuration(text: string): number {
 }
 
 import type { Bot } from "mioku";
-import { memberGetInfo } from "mioku";
+
 
 interface SegmentLike {
   type: string;
@@ -162,14 +162,11 @@ export function getGroupAvatarUrl(groupId: number | string): string {
 // 获取Bot群成员角色
 export async function getMemberRole(
   bot: Bot,
-  groupId: number,
-  userId: number,
+  groupId: string | number,
+  userId: string | number,
 ): Promise<string> {
   try {
-    const info = await bot.invoke(memberGetInfo, {
-      group_id: String(groupId),
-      user_id: String(userId),
-    });
+    const info = await bot.getMemberInfo(groupId, userId);
     return info?.role || "member";
   } catch {
     return "member";

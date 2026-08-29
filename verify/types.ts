@@ -13,20 +13,21 @@ export interface VerifyControllerOptions {
 }
 
 export interface MemberJoinInfo {
-  selfId: number;
+  selfId: string | number;
   groupId: number;
   userId: number;
   groupName: string;
 }
 
 export interface PendingVerify {
-  selfId: number;
+  selfId: string | number;
   groupId: number;
   userId: number;
   memberName: string;
   groupName: string;
   mode: VerifyMode;
-  promptMessageId?: number;
+  bot?: import("mioku").Bot;
+  promptMessageId?: string | number;
   reactionEmojiId?: string;
   numberAnswer?: number;
   requiredRegions?: string[];
@@ -39,9 +40,18 @@ export interface PendingVerify {
 }
 
 export interface VerifyController {
-  handleMemberJoin(info: MemberJoinInfo): Promise<boolean>;
-  restartVerification(info: MemberJoinInfo): Promise<boolean>;
+  handleMemberJoin(
+    info: MemberJoinInfo,
+    bot?: import("mioku").Bot,
+  ): Promise<boolean>;
+  restartVerification(
+    info: MemberJoinInfo,
+    bot?: import("mioku").Bot,
+  ): Promise<boolean>;
   bypassVerification(info: MemberJoinInfo): Promise<void>;
-  trySendCustomWelcome(info: MemberJoinInfo): Promise<boolean>;
+  trySendCustomWelcome(
+    info: MemberJoinInfo,
+    bot?: import("mioku").Bot,
+  ): Promise<boolean>;
   dispose(): void;
 }

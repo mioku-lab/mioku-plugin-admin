@@ -12,7 +12,7 @@ export function getPendingMap(): Map<string, PendingVerify> {
 }
 
 export function pendingKey(
-  selfId: number,
+  selfId: string | number,
   groupId: number,
   userId: number,
 ): string {
