@@ -184,7 +184,7 @@ export function registerNotificationHandlers(
   }
 
   function isOwnerPrivateMessage(event: MessageEvent): boolean {
-    if (ctx.isOwner?.(event)) {
+    if (ctx.isMaster?.(event)) {
       return true;
     }
     const userId = Number(event.user_id || 0);
@@ -507,7 +507,7 @@ export function registerNotificationHandlers(
   // 引用回复处理
   ctx.handle("message", async (event) => {
     if (event.message_type !== "private") return;
-    if (!ctx.isOwner?.(event)) return;
+    if (!ctx.isMaster?.(event)) return;
 
     const quotedText = await resolveQuotedText(event);
     if (!quotedText) {

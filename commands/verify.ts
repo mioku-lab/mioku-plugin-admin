@@ -72,7 +72,7 @@ export function registerVerifyCommands(options: VerifyCommandOptions) {
       const bot = event.bot;
       if (!bot) return;
 
-      const isMaster = ctx.isOwner?.(event) ?? false;
+      const isMaster = ctx.isMaster?.(event) ?? false;
       const senderRole = await getMemberRole(bot, groupIdNum, Number(event.user_id));
       const hasAdminPermission =
         isMaster || senderRole === "owner" || senderRole === "admin";
@@ -225,7 +225,7 @@ export function registerVerifyCommands(options: VerifyCommandOptions) {
           return;
         }
 
-        const isTargetMaster = ctx.isOwner?.(atUser) ?? false;
+        const isTargetMaster = ctx.isMaster?.(atUser) ?? false;
         const targetRole = await getMemberRole(bot, groupIdNum, atUser);
         if (isTargetMaster || targetRole === "owner" || targetRole === "admin") {
           await replyAdminErrorNotice({

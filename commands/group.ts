@@ -55,7 +55,7 @@ export function registerGroupAdminCommands(ctx: MiokuContext) {
       const groupIdNum = isGroup && event.group_id ? Number(event.group_id) : undefined;
       if (!isGroup || !groupIdNum) return;
 
-      const isMaster = ctx.isOwner?.(event) ?? false;
+      const isMaster = ctx.isMaster?.(event) ?? false;
       const senderRole = await getMemberRole(bot, groupIdNum, Number(event.user_id));
       const hasAdminPermission =
         isMaster || senderRole === "owner" || senderRole === "admin";

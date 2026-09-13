@@ -155,7 +155,7 @@ export function registerPersonalCommands(ctx: MiokuContext) {
     if (!text) return;
     if (event.user_id === event.self_id) return;
 
-    const isMaster = ctx.isOwner?.(event) ?? false;
+    const isMaster = ctx.isMaster?.(event) ?? false;
 
     const selfId = event.self_id;
     const bot = event.bot;
