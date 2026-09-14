@@ -27,8 +27,6 @@ interface RuntimeState {
 
 export default definePlugin({
   name: "admin",
-  version: "1.0.0",
-  description: "管理插件，提供事件通知与群管/个人管理指令",
 
   async setup(ctx: MiokuContext) {
     const configService = getService(ctx, Services.Config);
