@@ -1,4 +1,4 @@
-import type { Bot, MessageEvent, MessageInput, MessageTarget, MiokuContext, MessageSegment } from "mioku";
+import type { Bot, CommandDefinition, MessageEvent, MessageInput, MessageTarget, MiokuContext, MessageSegment } from "mioku";
 import {createGroupRef} from "mioku";
 import { extractImageUrl } from "../config";
 import { replyAdminErrorNotice } from "./notice";
@@ -150,28 +150,30 @@ async function sendForwardByEvent(options: {
 }
 
 export function registerPersonalCommands(ctx: MiokuContext) {
-  ctx.handle("message", async (event) => {
-    const text = ctx.text(event)?.trim();
-    if (!text) return;
-    if (event.user_id === event.self_id) return;
+  const register = (command: CommandDefinition) => {
+    const { handler, ...rest } = command;
+    ctx.command({
+      ...rest,
+      prefixes: false,
+      handler: async (c) => {
+        if (c.event.user_id === c.event.self_id) return;
+        await handler(c);
+      },
+    });
+  };
 
-    const isMaster = ctx.isMaster?.(event) ?? false;
-
-    const selfId = event.self_id;
-    const bot = event.bot;
-    if (!bot) return;
-
-    const isGroup = event.message_type === "group";
-
-    if (text.startsWith("/改头像")) {
-      if (!isMaster) {
-        ctx.logger.warn("[admin] 改头像功能仅主人可用");
-        return;
-      }
+  register({
+    name: "/改头像",
+    match: /^\/改头像/,
+    permission: "master",
+    description: "修改Bot头像",
+    handler: async ({ event }) => {
+      const bot = event.bot;
+      if (!bot) return;
       const imageUrl = extractImageUrl(event.message);
       if (!imageUrl) {
         await event.reply("图片呢图片呢～", true);
-      return;
+        return;
       }
       try {
         await bot.setAvatar(imageUrl);
@@ -184,20 +186,22 @@ export function registerPersonalCommands(ctx: MiokuContext) {
           fallbackMessage: `出错了，笨蛋～ ${String(err)}`,
           error: err,
         });
-        return;
       }
-      return;
-    }
+    },
+  });
 
-    if (text.startsWith("/改昵称")) {
-      if (!isMaster) {
-        ctx.logger.warn("[admin] 改昵称功能仅主人可用");
-        return;
-      }
-      const nickname = text.replace(/^\/改昵称\s*/, "").trim();
+  register({
+    name: "/改昵称",
+    match: /^\/改昵称/,
+    permission: "master",
+    description: "修改Bot昵称",
+    handler: async ({ event, body }) => {
+      const bot = event.bot;
+      if (!bot) return;
+      const nickname = body.replace(/^\/改昵称\s*/, "").trim();
       if (!nickname) {
         await event.reply("想改成什么昵称呀～", true);
-      return;
+        return;
       }
       try {
         await bot.setProfile({ nickname });
@@ -211,18 +215,21 @@ export function registerPersonalCommands(ctx: MiokuContext) {
           error: err,
         });
       }
-      return;
-    }
+    },
+  });
 
-    if (text.startsWith("/改签名")) {
-      if (!isMaster) {
-        ctx.logger.warn("[admin] 改签名功能仅主人可用");
-        return;
-      }
-      const personalNote = text.replace(/^\/改签名\s*/, "").trim();
+  register({
+    name: "/改签名",
+    match: /^\/改签名/,
+    permission: "master",
+    description: "修改Bot个性签名",
+    handler: async ({ event, body }) => {
+      const bot = event.bot;
+      if (!bot) return;
+      const personalNote = body.replace(/^\/改签名\s*/, "").trim();
       if (!personalNote) {
         await event.reply("想改成什么签名呀～", true);
-      return;
+        return;
       }
       try {
         await bot.setProfile({ personal_note: personalNote });
@@ -236,16 +243,18 @@ export function registerPersonalCommands(ctx: MiokuContext) {
           error: err,
         });
       }
-      return;
-    }
+    },
+  });
 
-    if (text.startsWith("/改性别")) {
-      if (!isMaster) {
-        ctx.logger.warn("[admin] 改性别功能仅主人可用");
-        return;
-      }
-      const genderText = text.replace(/^\/改性别\s*/, "").trim();
-      const sex = parseProfileSex(genderText);
+  register({
+    name: "/改性别",
+    match: /^\/改性别/,
+    permission: "master",
+    description: "修改Bot性别",
+    handler: async ({ event, body }) => {
+      const bot = event.bot;
+      if (!bot) return;
+      const sex = parseProfileSex(body.replace(/^\/改性别\s*/, ""));
       try {
         await bot.setProfile({ sex });
         await event.reply("done");
@@ -258,15 +267,19 @@ export function registerPersonalCommands(ctx: MiokuContext) {
           error: err,
         });
       }
-      return;
-    }
+    },
+  });
 
-    if (text.startsWith("/删好友")) {
-      if (!isMaster) {
-        ctx.logger.warn("[admin] 删好友功能仅主人可用");
-        return;
-      }
-      const qq = parseInt(text.replace(/^\/删好友\s*/, "").trim(), 10);
+  register({
+    name: "/删好友",
+    match: /^\/删好友(?:\s|$)/,
+    permission: "master",
+    description: "删除好友",
+    usage: "/删好友 qq号",
+    handler: async ({ event, body }) => {
+      const bot = event.bot;
+      if (!bot) return;
+      const qq = parseInt(body.replace(/^\/删好友\s*/, "").trim(), 10);
       if (!qq) {
         await replyAdminErrorNotice({
           ctx,
@@ -288,15 +301,19 @@ export function registerPersonalCommands(ctx: MiokuContext) {
           error: err,
         });
       }
-      return;
-    }
+    },
+  });
 
-    if (text.startsWith("/退群")) {
-      if (!isMaster) {
-        ctx.logger.warn("[admin] 退群功能仅主人可用");
-        return;
-      }
-      const targetGroup = parseInt(text.replace(/^\/退群\s*/, "").trim(), 10);
+  register({
+    name: "/退群",
+    match: /^\/退群(?:\s|$)/,
+    permission: "master",
+    description: "退出群聊",
+    usage: "/退群 群号",
+    handler: async ({ event, body }) => {
+      const bot = event.bot;
+      if (!bot) return;
+      const targetGroup = parseInt(body.replace(/^\/退群\s*/, "").trim(), 10);
       if (!targetGroup) {
         await replyAdminErrorNotice({
           ctx,
@@ -318,15 +335,19 @@ export function registerPersonalCommands(ctx: MiokuContext) {
           error: err,
         });
       }
-      return;
-    }
+    },
+  });
 
-    if (text.startsWith("/发好友")) {
-      if (!isMaster) {
-        ctx.logger.warn("[admin] 发好友功能仅主人可用");
-        return;
-      }
-      const matched = text.match(/^\/发好友\s*(\d+)\s*([\s\S]*)$/);
+  register({
+    name: "/发好友",
+    match: /^\/发好友(?:\s|$)/,
+    permission: "master",
+    description: "给好友发送私聊消息",
+    usage: "/发好友 qq号 内容",
+    handler: async ({ event, body }) => {
+      const bot = event.bot;
+      if (!bot) return;
+      const matched = body.match(/^\/发好友\s*(\d+)\s*([\s\S]*)$/);
       if (!matched) {
         await replyAdminErrorNotice({
           ctx,
@@ -367,15 +388,19 @@ export function registerPersonalCommands(ctx: MiokuContext) {
           error: err,
         });
       }
-      return;
-    }
+    },
+  });
 
-    if (text.startsWith("/发群聊")) {
-      if (!isMaster) {
-        ctx.logger.warn("[admin] 发群聊功能仅主人可用");
-        return;
-      }
-      const matched = text.match(/^\/发群聊\s*(\d+)\s*([\s\S]*)$/);
+  register({
+    name: "/发群聊",
+    match: /^\/发群聊(?:\s|$)/,
+    permission: "master",
+    description: "给群聊发送消息",
+    usage: "/发群聊 群号 内容",
+    handler: async ({ event, body }) => {
+      const bot = event.bot;
+      if (!bot) return;
+      const matched = body.match(/^\/发群聊\s*(\d+)\s*([\s\S]*)$/);
       if (!matched) {
         await replyAdminErrorNotice({
           ctx,
@@ -416,15 +441,18 @@ export function registerPersonalCommands(ctx: MiokuContext) {
           error: err,
         });
       }
-      return;
-    }
+    },
+  });
 
-    if (text === "/全部好友") {
-      if (!isMaster) {
-        ctx.logger.warn("[admin] 全部好友功能仅主人可用");
-        return;
-      }
-      if (isGroup) {
+  register({
+    name: "/全部好友",
+    match: /^\/全部好友$/,
+    permission: "master",
+    description: "获取全部好友列表",
+    handler: async ({ event }) => {
+      const bot = event.bot;
+      if (!bot) return;
+      if (event.message_type === "group") {
         await event.reply("在私聊使用试试看吧～", true);
         return;
       }
@@ -464,15 +492,18 @@ export function registerPersonalCommands(ctx: MiokuContext) {
           error: err,
         });
       }
-      return;
-    }
+    },
+  });
 
-    if (text === "/全部群聊") {
-      if (!isMaster) {
-        ctx.logger.warn("[admin] 全部群聊功能仅主人可用");
-        return;
-      }
-      if (isGroup) {
+  register({
+    name: "/全部群聊",
+    match: /^\/全部群聊$/,
+    permission: "master",
+    description: "获取全部群聊列表",
+    handler: async ({ event }) => {
+      const bot = event.bot;
+      if (!bot) return;
+      if (event.message_type === "group") {
         await event.reply("在私聊使用试试看吧～", true);
         return;
       }
@@ -489,8 +520,8 @@ export function registerPersonalCommands(ctx: MiokuContext) {
         }
         const nodes = groupList.map((group) =>
           ctx.segment.raw("node", {
-            user_id: selfId,
-            nickname: String(selfId),
+            user_id: event.self_id ?? "",
+            nickname: String(event.self_id ?? ""),
             content: [
               ctx.segment.image(
                 `https://p.qlogo.cn/gh/${group.group_id}/${group.group_id}/640/`,
@@ -511,7 +542,6 @@ export function registerPersonalCommands(ctx: MiokuContext) {
           error: err,
         });
       }
-      return;
-    }
+    },
   });
 }
