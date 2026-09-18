@@ -135,7 +135,7 @@ async function flushBatch(options: {
 
   try {
     await chatRuntime.generateNotice({
-      selfId,
+      selfId: Number(selfId),
       groupId,
       send: true,
       instruction: [
