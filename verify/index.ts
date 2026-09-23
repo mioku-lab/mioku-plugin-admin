@@ -15,7 +15,7 @@ import type {
   VerifyControllerOptions,
 } from "./types";
 import { clearTimers, getPendingMap, pendingKey } from "./state";
-import { isReactionPass, sendReactionPrompt } from "./reaction";
+import { addReaction, isReactionPass, sendReactionPrompt } from "./reaction";
 import { isNumberAnswerCorrect, sendNumberPrompt } from "./number";
 import { checkChiralAnswer, prepareChiral } from "./chiral";
 import { getGroupPromptImagePath } from "../utils/prompt-image-store";
@@ -40,7 +40,7 @@ export function createVerifyController(
   } = options;
   const pending = getPendingMap();
 
-  async function disableGroupVerify(groupId: number, reason: string) {
+  async function disableGroupVerify(groupId: string, reason: string) {
     ctx.logger.warn(`admin verify 关闭群 ${groupId} 验证：${reason}`);
     try {
       await setVerifyConfig(
@@ -51,7 +51,7 @@ export function createVerifyController(
     }
   }
 
-  async function recallMessage(bot: Bot, messageId: number) {
+  async function recallMessage(bot: Bot, messageId: string) {
     try {
       await bot.recallMessage(messageId);
     } catch (err) {
@@ -59,7 +59,7 @@ export function createVerifyController(
     }
   }
 
-  async function kickMember(bot: Bot, groupId: number, userId: number) {
+  async function kickMember(bot: Bot, groupId: string, userId: string) {
     try {
       await bot.kickMember(groupId, userId, false);
     } catch (err) {
@@ -84,24 +84,9 @@ export function createVerifyController(
     if (
       p.mode === "reaction" &&
       p.promptMessageId &&
-      bot &&
-      (bot.adapter === "onebotv11" || bot.adapter === "icqq")
+      bot
     ) {
-      try {
-        if (bot.adapter === "onebotv11") {
-          // onebot：set_msg_emoji_like 专属 action
-          await bot.sendApi("set_msg_emoji_like", {
-            message_id: p.promptMessageId,
-            emoji_id: PASS_REACTION_EMOJI_ID,
-            set: true,
-          });
-        } else {
-          // icqq：Group.setReaction（0x9082）
-          await bot.setReaction(p.promptMessageId, PASS_REACTION_EMOJI_ID, true);
-        }
-      } catch (err) {
-        ctx.logger.warn(`admin verify 通过表态失败: ${err}`);
-      }
+      await addReaction(bot, p.promptMessageId, PASS_REACTION_EMOJI_ID, ctx);
     }
 
     if (!getWelcomeEnabled()) return;
@@ -252,9 +237,9 @@ export function createVerifyController(
 
   async function onGroupMessage(event: RouteEvent<"message.group">) {
     if (event?.message_type !== "group") return;
-    const selfId = Number(event?.self_id || 0);
-    const groupId = Number(event?.group_id || 0);
-    const userId = Number(event?.user_id || 0);
+    const selfId = String(event?.self_id ?? "").trim();
+    const groupId = String(event?.group_id ?? "").trim();
+    const userId = String(event?.user_id ?? "").trim();
     if (!selfId || !groupId || !userId) return;
     if (userId === selfId) return;
 
@@ -264,7 +249,7 @@ export function createVerifyController(
 
     const cfg = getVerifyConfig();
     const text = ctx.text(event) || "";
-    const messageId = Number(event?.message_id || 0);
+    const messageId = String(event?.message_id ?? "").trim();
     const bot = event.bot;
 
     if (p.mode === "number" && isNumberAnswerCorrect(p, text)) {
@@ -304,9 +289,9 @@ export function createVerifyController(
   }
 
   async function onGroupReaction(event: RouteEvent<"notice.group.reaction">) {
-    const selfId = Number(event?.self_id || 0);
-    const groupId = Number(event?.group_id || 0);
-    const userId = Number(event?.user_id || 0);
+    const selfId = String(event?.self_id ?? "").trim();
+    const groupId = String(event?.group_id ?? "").trim();
+    const userId = String(event?.user_id ?? "").trim();
     if (!selfId || !groupId || !userId) return;
     if (userId === selfId) return;
     const raw = event.raw as { is_add?: boolean } | undefined;
@@ -346,9 +331,9 @@ export function createVerifyController(
   const decreaseDispose = ctx.handle(
     "notice.group.decrease",
     async (event) => {
-      const selfId = Number(event?.self_id || 0);
-      const groupId = Number(event?.group_id || 0);
-      const userId = Number(event?.user_id || 0);
+      const selfId = String(event?.self_id ?? "").trim();
+      const groupId = String(event?.group_id ?? "").trim();
+      const userId = String(event?.user_id ?? "").trim();
       if (!selfId || !groupId || !userId) return;
       const key = pendingKey(selfId, groupId, userId);
       if (!pending.has(key)) return;

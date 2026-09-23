@@ -1,7 +1,6 @@
-import type { RecvAtElement, RecvElement, RecvImageElement } from "napcat-sdk";
 
 export interface AdminConfig {
-  notifyTarget: number[];
+  notifyTarget: string[];
   notifyFriendMsg: boolean;
   notifyFriendRequest: boolean;
   notifyGroupInvite: boolean;
@@ -37,7 +36,9 @@ export const DEFAULT_CONFIG: AdminConfig = {
 export function normalizeConfig(raw: any): AdminConfig {
   return {
     notifyTarget: Array.isArray(raw?.notifyTarget)
-      ? raw.notifyTarget.map((v: any) => Number(v)).filter((n: number) => n > 0)
+      ? raw.notifyTarget
+          .map((v: unknown) => String(v ?? "").trim())
+          .filter((id: string) => id.length > 0)
       : DEFAULT_CONFIG.notifyTarget,
     notifyFriendMsg: raw?.notifyFriendMsg ?? DEFAULT_CONFIG.notifyFriendMsg,
     notifyFriendRequest:
@@ -136,7 +137,9 @@ export function extractImageUrls(message: readonly SegmentLike[] | null | undefi
 }
 
 // 从消息中提取被@的人的QQ号
-export function getAtUserId(message: readonly SegmentLike[] | null | undefined): number | undefined {
+export function getAtUserId(
+  message: readonly SegmentLike[] | null | undefined,
+): string | undefined {
   if (!Array.isArray(message)) return undefined;
   const atSeg = message.find(
     (seg) =>
@@ -144,18 +147,25 @@ export function getAtUserId(message: readonly SegmentLike[] | null | undefined):
       String(seg.data?.qq ?? seg.data?.target) !== "all",
   );
   if (!atSeg) return undefined;
-  const qq = Number(atSeg.data?.qq ?? atSeg.data?.target);
-  return Number.isFinite(qq) ? qq : undefined;
+  const id = String(atSeg.data?.qq ?? atSeg.data?.target ?? "").trim();
+  return id || undefined;
+}
+
+/** qlogo 头像服务只认数字 QQ 号,openid 一律返回空串 */
+function qlogoUrl(host: string, id: string, suffix: string): string {
+  if (!/^\d+$/.test(id)) return "";
+  return `https://${host}/${id}${suffix}`;
 }
 
 // 获取群成员头像URL
-export function getAvatarUrl(userId: number | string): string {
-  return `https://q1.qlogo.cn/g?b=qq&nk=${String(userId)}&s=640`;
+export function getAvatarUrl(userId: string): string {
+  return qlogoUrl("q1.qlogo.cn/g?b=qq&nk=", String(userId ?? "").trim(), "&s=640");
 }
 
 // 获取群头像URL
-export function getGroupAvatarUrl(groupId: number | string): string {
-  const g = String(groupId);
+export function getGroupAvatarUrl(groupId: string): string {
+  const g = String(groupId ?? "").trim();
+  if (!/^\d+$/.test(g)) return "";
   return `https://p.qlogo.cn/gh/${g}/${g}/640/`;
 }
 

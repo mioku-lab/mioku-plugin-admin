@@ -5,8 +5,8 @@ import type { AdminConfig } from "../config";
 export async function resolveMemberName(
   ctx: MiokuContext,
   bot: import("mioku").Bot | undefined,
-  groupId: number,
-  userId: number,
+  groupId: string,
+  userId: string,
 ): Promise<string> {
   try {
     if (!bot) return String(userId);
@@ -22,7 +22,7 @@ export async function resolveMemberName(
 }
 
 interface PendingMember {
-  userId: number;
+  userId: string;
   memberName: string;
 }
 
@@ -42,7 +42,7 @@ function getBatchMap(): Map<string, BatchState> {
   return state[RUNTIME_KEY] as Map<string, BatchState>;
 }
 
-function batchKey(selfId: string | number, groupId: number): string {
+function batchKey(selfId: string, groupId: string): string {
   return `${selfId}:${groupId}`;
 }
 
@@ -68,16 +68,16 @@ async function flushBatch(options: {
   ctx: MiokuContext;
   aiService?: AIService;
   config: AdminConfig;
-  selfId: string | number;
-  groupId: number;
+  selfId: string;
+  groupId: string;
   groupName: string;
   members: PendingMember[];
   promptInjections?: { content: string; title?: string }[];
   bot?: import("mioku").Bot;
   tryCustomPrompt?: (info: {
-    selfId: string | number;
-    groupId: number;
-    userId: number;
+    selfId: string;
+    groupId: string;
+    userId: string;
     groupName: string;
   }, bot?: import("mioku").Bot) => Promise<boolean>;
 }): Promise<string> {
@@ -135,13 +135,13 @@ async function flushBatch(options: {
 
   try {
     await chatRuntime.generateNotice({
-      selfId: Number(selfId),
+      selfId,
       groupId,
       send: true,
       instruction: [
         `当前有 ${members.length} 位新成员同时入群，请一次性发送一段统一的欢迎语（不要逐个 @ 欢迎、不要重复点名）不要长篇大论，精简即可。`,
         `新成员昵称：${userList}`,
-        `新成员 QQ：${userIdList}`,
+        `新成员 ID：${userIdList}`,
         `所在群：${groupName}`,
         `${config.welcome.aiPrompt || ""}`,
       ].join("\n"),
@@ -159,17 +159,17 @@ async function sendSingleWelcome(options: {
   ctx: MiokuContext;
   aiService?: AIService;
   config: AdminConfig;
-  selfId: string | number;
-  groupId: number;
+  selfId: string;
+  groupId: string;
   groupName: string;
-  userId: number;
+  userId: string;
   memberName: string;
   promptInjections?: { content: string; title?: string }[];
   bot?: import("mioku").Bot;
   tryCustomPrompt?: (info: {
-    selfId: string | number;
-    groupId: number;
-    userId: number;
+    selfId: string;
+    groupId: string;
+    userId: string;
     groupName: string;
   }, bot?: import("mioku").Bot) => Promise<boolean>;
 }): Promise<void> {
@@ -211,16 +211,16 @@ export async function triggerSingleWelcome(options: {
   ctx: MiokuContext;
   aiService?: AIService;
   getConfig: () => AdminConfig;
-  selfId: string | number;
-  groupId: number;
+  selfId: string;
+  groupId: string;
   groupName: string;
-  userId: number;
+  userId: string;
   memberName?: string;
   promptInjections?: { content: string; title?: string }[];
   tryCustomPrompt?: (info: {
-    selfId: string | number;
-    groupId: number;
-    userId: number;
+    selfId: string;
+    groupId: string;
+    userId: string;
     groupName: string;
   }, bot?: import("mioku").Bot) => Promise<boolean>;
 }, bot?: import("mioku").Bot): Promise<void> {
@@ -252,15 +252,15 @@ export function registerWelcomeHandler(
   aiService: AIService | undefined,
   getConfig: () => AdminConfig,
   shouldSuppress?: (info: {
-    selfId: string | number;
-    groupId: number;
-    userId: number;
+    selfId: string;
+    groupId: string;
+    userId: string;
     groupName: string;
   }, bot?: import("mioku").Bot) => Promise<boolean> | boolean,
   tryCustomPrompt?: (info: {
-    selfId: string | number;
-    groupId: number;
-    userId: number;
+    selfId: string;
+    groupId: string;
+    userId: string;
     groupName: string;
   }, bot?: import("mioku").Bot) => Promise<boolean>,
 ): () => void {
@@ -272,13 +272,13 @@ export function registerWelcomeHandler(
       const cfg = getConfig();
       const bot = event.bot;
       const selfId = event?.self_id || ctx.self_id || "";
-      const groupId = Number(event?.group_id || 0);
-      const userId = Number(event?.user_id || 0);
+      const groupId = String(event?.group_id ?? "").trim();
+      const userId = String(event?.user_id ?? "").trim();
       if (!groupId || !userId) return;
       if (selfId != null && String(userId) === String(selfId)) return;
 
       const groupName =
-        String((event.raw as { group_name?: string } | undefined)?.group_name || "").trim() || String(groupId);
+        String((event.raw as { group_name?: string } | undefined)?.group_name || "").trim() || groupId;
 
       if (
         shouldSuppress &&

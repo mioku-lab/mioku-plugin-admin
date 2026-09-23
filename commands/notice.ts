@@ -23,8 +23,8 @@ export async function replyAdminErrorNotice(options: {
   error?: unknown;
 }): Promise<void> {
   const text = options.ctx.text(options.event)?.trim() ?? "";
-  const hasSlashPrefix = text.startsWith("/");
-  if (!hasSlashPrefix) {
+  // 只对真正的命令消息做 AI 兜底提示,普通聊天不打扰(命令支持 / 与 . 前缀)
+  if (!/^[./]/.test(text)) {
     return;
   }
   if (options.error != null) {

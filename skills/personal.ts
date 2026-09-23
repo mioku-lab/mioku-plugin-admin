@@ -101,8 +101,8 @@ const personalSkill: AISkill = {
         try {
           switch (action) {
             case "set_avatar": {
-              const messageId = Number(a?.message_id);
-              if (!Number.isFinite(messageId) || messageId <= 0) {
+              const messageId = String(a?.message_id ?? "").trim();
+              if (!messageId) {
                 return { error: "set_avatar 需要提供有效的 message_id" };
               }
               const imageUrl = await getImageUrlByMessageId(bot, messageId);

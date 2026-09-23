@@ -3,7 +3,7 @@ export type VerifyMode = "reaction" | "number" | "chiral";
 export const MAX_CUSTOM_PROMPT_LENGTH = 50;
 
 export interface VerifyGroupConfig {
-  groupId: number;
+  groupId: string;
   enabled: boolean;
   mode: VerifyMode;
   customPrompt: string;
@@ -71,14 +71,14 @@ export function normalizeVerifyMode(value: unknown): VerifyMode {
 }
 
 function normalizeVerifyGroup(raw: any): VerifyGroupConfig {
-  const groupId = Number(raw?.groupId || raw?.group_id || 0);
+  const groupId = String(raw?.groupId ?? raw?.group_id ?? "").trim();
   const promptImageRaw =
     raw?.promptImage ??
     raw?.prompt_image ??
     (Array.isArray(raw?.promptImages) ? raw.promptImages[0] : undefined) ??
     (Array.isArray(raw?.images) ? raw.images[0] : undefined);
   return {
-    groupId: groupId > 0 ? groupId : 0,
+    groupId,
     enabled: raw?.enabled === true,
     mode: normalizeVerifyMode(raw?.mode),
     customPrompt: normalizeCustomPrompt(
@@ -92,7 +92,7 @@ export function normalizeVerifyConfig(raw: any): VerifyConfig {
   const groups: VerifyGroupConfig[] = Array.isArray(raw?.groups)
     ? raw.groups
         .map((g: any) => normalizeVerifyGroup(g))
-        .filter((g: VerifyGroupConfig) => g.groupId > 0)
+        .filter((g: VerifyGroupConfig) => g.groupId.length > 0)
     : [];
 
   const numOr = (value: unknown, fallback: number): number => {
@@ -142,7 +142,7 @@ export function normalizeVerifyConfig(raw: any): VerifyConfig {
 
 export function getGroupVerifyConfig(
   config: VerifyConfig,
-  groupId: number,
+  groupId: string,
 ): VerifyGroupConfig {
   const found = config.groups.find((g) => g.groupId === groupId);
   if (found) return found;
@@ -157,7 +157,7 @@ export function getGroupVerifyConfig(
 
 export function upsertGroupVerifyConfig(
   config: VerifyConfig,
-  groupId: number,
+  groupId: string,
   patch: Partial<Omit<VerifyGroupConfig, "groupId">>,
 ): VerifyConfig {
   const idx = config.groups.findIndex((g) => g.groupId === groupId);

@@ -13,8 +13,8 @@ export function getPendingMap(): Map<string, PendingVerify> {
 
 export function pendingKey(
   selfId: string | number,
-  groupId: number,
-  userId: number,
+  groupId: string,
+  userId: string,
 ): string {
   return `${selfId}:${groupId}:${userId}`;
 }

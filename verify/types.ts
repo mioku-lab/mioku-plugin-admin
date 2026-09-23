@@ -13,21 +13,21 @@ export interface VerifyControllerOptions {
 }
 
 export interface MemberJoinInfo {
-  selfId: string | number;
-  groupId: number;
-  userId: number;
+  selfId: string;
+  groupId: string;
+  userId: string;
   groupName: string;
 }
 
 export interface PendingVerify {
-  selfId: string | number;
-  groupId: number;
-  userId: number;
+  selfId: string;
+  groupId: string;
+  userId: string;
   memberName: string;
   groupName: string;
   mode: VerifyMode;
   bot?: import("mioku").Bot;
-  promptMessageId?: string | number;
+  promptMessageId?: string;
   reactionEmojiId?: string;
   numberAnswer?: number;
   requiredRegions?: string[];

@@ -7,8 +7,8 @@ interface GroupRuntime {
   ctx: { logger?: { error?: (...args: unknown[]) => void } };
   event: MessageEvent;
   bot: Bot;
-  groupId: number;
-  selfId: number;
+  groupId: string;
+  selfId: string;
 }
 
 interface SkillRuntimeContext {
@@ -24,10 +24,10 @@ function resolveGroupRuntime(runtimeCtx: SkillRuntimeContext | undefined):
   if (!ctx) return { error: "无法获取上下文" };
 
   const event = runtimeCtx?.event ?? runtimeCtx?.rawEvent;
-  const groupId = Number(event?.group_id ?? 0);
+  const groupId = String(event?.group_id ?? "").trim();
   if (!groupId) return { error: "这个工具只能在群聊中使用" };
 
-  const selfId = Number(event?.self_id ?? 0);
+  const selfId = String(event?.self_id ?? "").trim();
   if (!selfId) return { error: "无法获取Bot ID" };
 
   const bot = event?.bot;
@@ -161,7 +161,7 @@ const groupAdminSkill: AISkill = {
               return { success: true, message: `已将 ${userId} 的头衔设为 "${title}"` };
             }
             case "set_self_title": {
-              const userId = Number(event.user_id);
+              const userId = String(event.user_id ?? "").trim();
               if (!userId) return { error: "无法获取当前用户ID" };
               const title = String((args as { title?: unknown })?.title ?? "").trim();
               if (!title) return { error: "set_self_title 需要提供 title" };
@@ -244,8 +244,10 @@ const groupAdminSkill: AISkill = {
               return { success: true, message: `Bot在当前群的群名片已修改为 ${card}` };
             }
             case "set_group_avatar": {
-              const messageId = Number((args as { message_id?: unknown })?.message_id);
-              if (!Number.isFinite(messageId) || messageId <= 0) {
+              const messageId = String(
+                (args as { message_id?: unknown })?.message_id ?? "",
+              ).trim();
+              if (!messageId) {
                 return { error: "set_group_avatar 需要提供有效的 message_id" };
               }
               const imageUrl = await getImageUrlByMessageId(bot, messageId);

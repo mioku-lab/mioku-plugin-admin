@@ -21,7 +21,7 @@ function formatGroupRole(role: string): string {
 
 type GroupContext = CommandExecutionContext & {
   bot: Bot;
-  groupIdNum: number;
+  groupIdNum: string;
   senderRole: string;
 };
 
@@ -32,19 +32,20 @@ export function registerGroupAdminCommands(ctx: MiokuContext) {
   ) => {
     ctx.command({
       ...def,
-      prefixes: false,
+      // 原设计:裸命令与 /命令 都可用;这里保留两者并补上 . 前缀
+      prefixes: ["", ".", "/"],
       handler: async (c) => {
         const event = c.event;
         if (event.user_id === event.self_id) return;
         if (event.message_type !== "group") return;
         const bot = event.bot;
         if (!bot) return;
-        const groupIdNum = event.group_id ? Number(event.group_id) : 0;
+        const groupIdNum = String(event.group_id ?? "").trim();
         if (!groupIdNum) return;
         const senderRole = await getMemberRole(
           bot,
           groupIdNum,
-          Number(event.user_id),
+          String(event.user_id ?? "").trim(),
         );
         try {
           await run({ ...c, bot, groupIdNum, senderRole });
@@ -64,7 +65,7 @@ export function registerGroupAdminCommands(ctx: MiokuContext) {
 
   const ensureDangerousTargetPermission = async (
     c: GroupContext,
-    targetUserId: number,
+    targetUserId: string,
     actionName: string,
   ): Promise<boolean> => {
     const { bot, groupIdNum, senderRole, event } = c;
@@ -89,7 +90,7 @@ export function registerGroupAdminCommands(ctx: MiokuContext) {
     async (c) => {
       const { ctx, event, bot, groupIdNum, body } = c;
       const atUser = getAtUserId(event.message);
-      if (atUser != null && atUser !== Number(event.user_id)) {
+      if (atUser != null && atUser !== String(event.user_id ?? "").trim()) {
         await event.reply("管好自己呗～", true);
         return;
       }
@@ -115,47 +116,43 @@ export function registerGroupAdminCommands(ctx: MiokuContext) {
 
   register(
     {
-      name: "/改头衔",
-      match: /^\/?改头衔(?:\s|$)/,
+      name: "改头衔",
+      match: /^\/??改头衔(?:\s|$)/,
       permission: "admin",
       description: "设置群成员专属头衔",
-      usage: "/改头衔 qq号或@人 头衔",
+      usage: ".改头衔 <用户ID或@人> 头衔",
     },
     async (c) => {
       const { ctx, event, bot, groupIdNum, body } = c;
-      const rest = body.replace(/^\/?改头衔\s*/, "").trim();
+      const rest = body.replace(/^\/??改头衔\s*/, "").trim();
       const atUser = getAtUserId(event.message);
-      let targetUser: number | undefined = atUser;
+      let targetUser: string | undefined = atUser;
       let title: string;
 
-      const isSlashCommand = body.startsWith("/");
-
       if (atUser) {
-        title = rest.replace(/@\d+\s*/, "").trim();
+        title = rest.replace(/@[A-Za-z0-9_-]{4,64}\s*/, "").trim();
       } else {
         const parts = rest.split(/\s+/);
         if (parts.length < 2) {
-          if (!isSlashCommand) return;
           await replyAdminErrorNotice({
             ctx,
             event,
             instruction:
-              "用户在让你修改别人的头衔时缺少参数，请提示用户命令后需要加qq号或@人",
+              "用户在让你修改别人的头衔时缺少参数，请提示用户命令后需要加用户ID或@人",
             fallbackMessage: "想改谁的头衔呀～",
           });
           return;
         }
-        targetUser = parseInt(parts[0], 10);
+        targetUser = String(parts[0]).trim();
         title = parts.slice(1).join(" ");
       }
 
       if (!targetUser || !title) {
-        if (!isSlashCommand) return;
         await replyAdminErrorNotice({
           ctx,
           event,
           instruction:
-            "用户触发改头衔时参数无效，请提示用户命令后需要加qq号或@人",
+            "用户触发改头衔时参数无效，请提示用户命令后需要加用户ID或@人",
           fallbackMessage: "想改谁的头衔呀～",
         });
         return;
@@ -178,16 +175,14 @@ export function registerGroupAdminCommands(ctx: MiokuContext) {
 
   register(
     {
-      name: "/踢",
-      match: /^\/?踢(?:\s|$)/,
+      name: "踢",
+      match: /^\/??踢(?:\s|$)/,
       permission: "admin",
       description: "踢出群成员",
     },
     async (c) => {
       const { ctx, event, bot, groupIdNum, body } = c;
       const atUser = getAtUserId(event.message);
-      const isSlashCommand = body.startsWith("/");
-      if (!atUser && !isSlashCommand) return;
       if (!atUser) {
         await replyAdminErrorNotice({
           ctx,
@@ -216,17 +211,15 @@ export function registerGroupAdminCommands(ctx: MiokuContext) {
 
   register(
     {
-      name: "/禁言",
-      match: /^\/?禁(?:言)?(?:\s|$)/,
+      name: "禁言",
+      match: /^\/??禁(?:言)?(?:\s|$)/,
       permission: "admin",
       description: "禁言群成员（支持分钟/小时/天）",
-      usage: "/禁言 @人 10分钟",
+      usage: ".禁言 @人 10分钟",
     },
     async (c) => {
       const { ctx, event, bot, groupIdNum, body } = c;
       const atUser = getAtUserId(event.message);
-      const isSlashCommand = body.startsWith("/");
-      if (!atUser && !isSlashCommand) return;
       if (!atUser) {
         await replyAdminErrorNotice({
           ctx,
@@ -238,8 +231,8 @@ export function registerGroupAdminCommands(ctx: MiokuContext) {
         return;
       }
       if (!(await ensureDangerousTargetPermission(c, atUser, "禁言"))) return;
-      const rest = body.replace(/^\/?禁言\s*/, "").trim();
-      const durationStr = rest.replace(/@\d+\s*/, "").trim();
+      const rest = body.replace(/^\/??禁言\s*/, "").trim();
+      const durationStr = rest.replace(/@[A-Za-z0-9_-]{4,64}\s*/, "").trim();
       const durationSec = parseDuration(durationStr) || 10 * 60;
       try {
         await bot.banMember(groupIdNum, atUser, durationSec);
@@ -258,16 +251,14 @@ export function registerGroupAdminCommands(ctx: MiokuContext) {
 
   register(
     {
-      name: "/解禁",
-      match: /^\/?解(?:禁)?(?:\s|$)/,
+      name: "解禁",
+      match: /^\/??解(?:禁)?(?:\s|$)/,
       permission: "admin",
       description: "解除群成员禁言",
     },
     async (c) => {
       const { ctx, event, bot, groupIdNum, body } = c;
       const atUser = getAtUserId(event.message);
-      const isSlashCommand = body.startsWith("/");
-      if (!atUser && !isSlashCommand) return;
       if (!atUser) {
         await replyAdminErrorNotice({
           ctx,
@@ -295,16 +286,14 @@ export function registerGroupAdminCommands(ctx: MiokuContext) {
 
   register(
     {
-      name: "/设管理",
-      match: /^\/?设管理(?:\s|$)/,
+      name: "设管理",
+      match: /^\/??设管理(?:\s|$)/,
       permission: "admin",
       description: "设置群管理员",
     },
     async (c) => {
       const { ctx, event, bot, groupIdNum, body } = c;
       const atUser = getAtUserId(event.message);
-      const isSlashCommand = body.startsWith("/");
-      if (!atUser && !isSlashCommand) return;
       if (!atUser) {
         await replyAdminErrorNotice({
           ctx,
@@ -332,8 +321,8 @@ export function registerGroupAdminCommands(ctx: MiokuContext) {
 
   register(
     {
-      name: "/全体禁言",
-      match: /^\/全体禁言$/,
+      name: "全体禁言",
+      match: /^\/?全体禁言$/,
       permission: "admin",
       description: "开启全体禁言",
     },
@@ -356,8 +345,8 @@ export function registerGroupAdminCommands(ctx: MiokuContext) {
 
   register(
     {
-      name: "/全体解禁",
-      match: /^\/全体解禁$/,
+      name: "全体解禁",
+      match: /^\/?全体解禁$/,
       permission: "admin",
       description: "关闭全体禁言",
     },
@@ -380,14 +369,14 @@ export function registerGroupAdminCommands(ctx: MiokuContext) {
 
   register(
     {
-      name: "/改群名片",
-      match: /^\/?改群名片(?:\s|$)/,
+      name: "改群名片",
+      match: /^\/??改群名片(?:\s|$)/,
       permission: "admin",
       description: "修改Bot在群里的名片",
     },
     async (c) => {
       const { ctx, event, bot, groupIdNum, body } = c;
-      const card = body.replace(/^\/?改群名片\s*/, "").trim();
+      const card = body.replace(/^\/??改群名片\s*/, "").trim();
       if (!card) {
         await replyAdminErrorNotice({
           ctx,
@@ -414,14 +403,14 @@ export function registerGroupAdminCommands(ctx: MiokuContext) {
 
   register(
     {
-      name: "/改群昵称",
-      match: /^\/改群昵称/,
+      name: "改群昵称",
+      match: /^\/?改群昵称/,
       permission: "admin",
       description: "修改群聊名称",
     },
     async (c) => {
       const { ctx, event, bot, groupIdNum, body } = c;
-      const groupName = body.replace(/^\/改群昵称\s*/, "").trim();
+      const groupName = body.replace(/^\/?改群昵称\s*/, "").trim();
       if (!groupName) {
         await replyAdminErrorNotice({
           ctx,
@@ -449,8 +438,8 @@ export function registerGroupAdminCommands(ctx: MiokuContext) {
 
   register(
     {
-      name: "/改群头像",
-      match: /^\/改群头像/,
+      name: "改群头像",
+      match: /^\/?改群头像/,
       permission: "admin",
       description: "修改群头像",
     },
@@ -484,8 +473,8 @@ export function registerGroupAdminCommands(ctx: MiokuContext) {
 
   register(
     {
-      name: "/撤回",
-      match: /^\/?撤回(?:\s|$)/,
+      name: "撤回",
+      match: /^\/??撤回(?:\s|$)/,
       permission: "admin",
       description: "撤回别人的消息",
       usage: "引用一条消息后输入 /撤回",

@@ -1,4 +1,4 @@
-import type { MiokuContext } from "mioku";
+import type { Bot, MiokuContext } from "mioku";
 import type { VerifyConfig } from "./config";
 import type { PendingVerify } from "./types";
 
@@ -22,24 +22,47 @@ export async function sendReactionPrompt(
   }
   if (messageId == null || messageId === "") return;
   p.promptMessageId = messageId;
+  await addReaction(bot, messageId, cfg.reactionEmojiId, ctx);
+}
+
+/** 表态能力按平台探测:icqq 扩展方法优先,其次 OneBot 原生 action */
+export async function addReaction(
+  bot: Bot,
+  messageId: string,
+  emojiId: string,
+  ctx: { logger: { warn(message: string): void } },
+): Promise<boolean> {
+  const extended = bot as unknown as {
+    setReaction?: (
+      messageId: string,
+      emojiId: string,
+      set: boolean,
+    ) => Promise<unknown>;
+  };
+  if (typeof extended.setReaction === "function") {
+    try {
+      await extended.setReaction(messageId, emojiId, true);
+      return true;
+    } catch (err) {
+      ctx.logger.warn(`admin verify 添加表态失败: ${err}`);
+      return false;
+    }
+  }
   if (bot.adapter === "onebotv11") {
     try {
       await bot.sendApi("set_msg_emoji_like", {
         message_id: messageId,
-        emoji_id: cfg.reactionEmojiId,
+        emoji_id: emojiId,
         set: true,
       });
+      return true;
     } catch (err) {
       ctx.logger.warn(`admin verify 添加表态失败: ${err}`);
-    }
-  } else if (bot.adapter === "icqq") {
-    // icqq：Group.setReaction（0x9082），message_id 为群消息 cqhttp 格式
-    try {
-      await bot.setReaction(messageId, cfg.reactionEmojiId, true);
-    } catch (err) {
-      ctx.logger.warn(`admin verify 添加表态失败: ${err}`);
+      return false;
     }
   }
+  ctx.logger.warn(`admin verify 当前平台(${bot.adapter})不支持消息表态`);
+  return false;
 }
 
 /** icqq GroupReactionEvent 的 seq 提取（cqhttp message_id 为 base64，seq 在第 9-12 字节，与 icqq parseGroupMessageId 同布局） */
@@ -77,7 +100,9 @@ export function isReactionPass(p: PendingVerify, event: unknown): boolean {
     );
   }
 
-  if (Number(raw?.message_id || 0) !== Number(p.promptMessageId)) return false;
+  if (String(raw?.message_id ?? "") !== String(p.promptMessageId ?? "")) {
+    return false;
+  }
   const likes: unknown[] = Array.isArray(raw?.likes) ? raw.likes : [];
   return likes.some((l) => {
     const item = l as { emoji_id?: unknown };

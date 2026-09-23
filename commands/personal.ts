@@ -154,7 +154,6 @@ export function registerPersonalCommands(ctx: MiokuContext) {
     const { handler, ...rest } = command;
     ctx.command({
       ...rest,
-      prefixes: false,
       handler: async (c) => {
         if (c.event.user_id === c.event.self_id) return;
         await handler(c);
@@ -163,8 +162,8 @@ export function registerPersonalCommands(ctx: MiokuContext) {
   };
 
   register({
-    name: "/改头像",
-    match: /^\/改头像/,
+    name: "改头像",
+    match: /^\/?改头像/,
     permission: "master",
     description: "修改Bot头像",
     handler: async ({ event }) => {
@@ -191,14 +190,14 @@ export function registerPersonalCommands(ctx: MiokuContext) {
   });
 
   register({
-    name: "/改昵称",
-    match: /^\/改昵称/,
+    name: "改昵称",
+    match: /^\/?改昵称/,
     permission: "master",
     description: "修改Bot昵称",
     handler: async ({ event, body }) => {
       const bot = event.bot;
       if (!bot) return;
-      const nickname = body.replace(/^\/改昵称\s*/, "").trim();
+      const nickname = body.replace(/^\/?改昵称\s*/, "").trim();
       if (!nickname) {
         await event.reply("想改成什么昵称呀～", true);
         return;
@@ -219,14 +218,14 @@ export function registerPersonalCommands(ctx: MiokuContext) {
   });
 
   register({
-    name: "/改签名",
-    match: /^\/改签名/,
+    name: "改签名",
+    match: /^\/?改签名/,
     permission: "master",
     description: "修改Bot个性签名",
     handler: async ({ event, body }) => {
       const bot = event.bot;
       if (!bot) return;
-      const personalNote = body.replace(/^\/改签名\s*/, "").trim();
+      const personalNote = body.replace(/^\/?改签名\s*/, "").trim();
       if (!personalNote) {
         await event.reply("想改成什么签名呀～", true);
         return;
@@ -247,14 +246,14 @@ export function registerPersonalCommands(ctx: MiokuContext) {
   });
 
   register({
-    name: "/改性别",
-    match: /^\/改性别/,
+    name: "改性别",
+    match: /^\/?改性别/,
     permission: "master",
     description: "修改Bot性别",
     handler: async ({ event, body }) => {
       const bot = event.bot;
       if (!bot) return;
-      const sex = parseProfileSex(body.replace(/^\/改性别\s*/, ""));
+      const sex = parseProfileSex(body.replace(/^\/?改性别\s*/, ""));
       try {
         await bot.setProfile({ sex });
         await event.reply("done");
@@ -271,15 +270,15 @@ export function registerPersonalCommands(ctx: MiokuContext) {
   });
 
   register({
-    name: "/删好友",
-    match: /^\/删好友(?:\s|$)/,
+    name: "删好友",
+    match: /^\/?删好友(?:\s|$)/,
     permission: "master",
     description: "删除好友",
-    usage: "/删好友 qq号",
+    usage: ".删好友 qq号",
     handler: async ({ event, body }) => {
       const bot = event.bot;
       if (!bot) return;
-      const qq = parseInt(body.replace(/^\/删好友\s*/, "").trim(), 10);
+      const qq = parseInt(body.replace(/^\/?删好友\s*/, "").trim(), 10);
       if (!qq) {
         await replyAdminErrorNotice({
           ctx,
@@ -305,15 +304,15 @@ export function registerPersonalCommands(ctx: MiokuContext) {
   });
 
   register({
-    name: "/退群",
-    match: /^\/退群(?:\s|$)/,
+    name: "退群",
+    match: /^\/?退群(?:\s|$)/,
     permission: "master",
     description: "退出群聊",
-    usage: "/退群 群号",
+    usage: ".退群 群号",
     handler: async ({ event, body }) => {
       const bot = event.bot;
       if (!bot) return;
-      const targetGroup = parseInt(body.replace(/^\/退群\s*/, "").trim(), 10);
+      const targetGroup = parseInt(body.replace(/^\/?退群\s*/, "").trim(), 10);
       if (!targetGroup) {
         await replyAdminErrorNotice({
           ctx,
@@ -339,11 +338,11 @@ export function registerPersonalCommands(ctx: MiokuContext) {
   });
 
   register({
-    name: "/发好友",
-    match: /^\/发好友(?:\s|$)/,
+    name: "发好友",
+    match: /^\/?发好友(?:\s|$)/,
     permission: "master",
     description: "给好友发送私聊消息",
-    usage: "/发好友 qq号 内容",
+    usage: ".发好友 qq号 内容",
     handler: async ({ event, body }) => {
       const bot = event.bot;
       if (!bot) return;
@@ -392,11 +391,11 @@ export function registerPersonalCommands(ctx: MiokuContext) {
   });
 
   register({
-    name: "/发群聊",
-    match: /^\/发群聊(?:\s|$)/,
+    name: "发群聊",
+    match: /^\/?发群聊(?:\s|$)/,
     permission: "master",
     description: "给群聊发送消息",
-    usage: "/发群聊 群号 内容",
+    usage: ".发群聊 群号 内容",
     handler: async ({ event, body }) => {
       const bot = event.bot;
       if (!bot) return;
@@ -445,8 +444,8 @@ export function registerPersonalCommands(ctx: MiokuContext) {
   });
 
   register({
-    name: "/全部好友",
-    match: /^\/全部好友$/,
+    name: "全部好友",
+    match: /^\/?全部好友$/,
     permission: "master",
     description: "获取全部好友列表",
     handler: async ({ event }) => {
@@ -496,8 +495,8 @@ export function registerPersonalCommands(ctx: MiokuContext) {
   });
 
   register({
-    name: "/全部群聊",
-    match: /^\/全部群聊$/,
+    name: "全部群聊",
+    match: /^\/?全部群聊$/,
     permission: "master",
     description: "获取全部群聊列表",
     handler: async ({ event }) => {

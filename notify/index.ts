@@ -16,8 +16,8 @@ interface NotifyPayload {
 }
 
 interface PendingFriendRequest {
-  selfId: number;
-  userId: number;
+  selfId: string;
+  userId: string;
   flag: string;
   createdAt: number;
   approve: () => Promise<void>;
@@ -25,9 +25,9 @@ interface PendingFriendRequest {
 }
 
 interface PendingGroupInvite {
-  selfId: number;
-  groupId: number;
-  userId: number;
+  selfId: string;
+  groupId: string;
+  userId: string;
   flag: string;
   subType: string;
   createdAt: number;
@@ -50,10 +50,12 @@ function normalizeErrorMessage(error: unknown): string {
 }
 
 /** 获取应该通知的主人列表 */
-function getNotifyOwners(config: AdminConfig): number[] {
+function getNotifyOwners(config: AdminConfig): string[] {
   if (config.notifyTarget.length > 0) return config.notifyTarget;
   const owners = Array.isArray(botConfig?.owners) ? botConfig.owners : [];
-  return owners.map((v: any) => Number(v)).filter((n: number) => n > 0);
+  return owners
+    .map((v: unknown) => String(v ?? "").trim())
+    .filter((id: string) => id.length > 0);
 }
 
 /** 注册所有事件通知处理器 */
@@ -65,7 +67,7 @@ export function registerNotificationHandlers(
   const pendingGroupInvites: PendingGroupInvite[] = [];
   const recentEventKeys = new Map<string, number>();
 
-  function owners(): number[] {
+  function owners(): string[] {
     return getNotifyOwners(getConfig());
   }
 
@@ -187,8 +189,8 @@ export function registerNotificationHandlers(
     if (ctx.isMaster?.(event)) {
       return true;
     }
-    const userId = Number(event.user_id || 0);
-    if (userId <= 0) {
+    const userId = String(event.user_id ?? "").trim();
+    if (!userId) {
       return false;
     }
     return owners().includes(userId);
@@ -206,8 +208,8 @@ export function registerNotificationHandlers(
   }
 
   function pushPendingFriendRequest(event: RequestEvent) {
-    const selfId = Number(event.self_id || 0);
-    const userId = Number(event.user_id || 0);
+    const selfId = String(event.self_id ?? "").trim();
+    const userId = String(event.user_id ?? "").trim();
     const flag = String(event.flag || "").trim();
     if (!selfId || !userId || !flag) return;
     pendingFriendRequests.push({
@@ -222,9 +224,9 @@ export function registerNotificationHandlers(
   }
 
   function pushPendingGroupInvite(event: RequestEvent) {
-    const selfId = Number(event.self_id || 0);
-    const groupId = Number(event.group_id || 0);
-    const userId = Number(event.user_id || 0);
+    const selfId = String(event.self_id ?? "").trim();
+    const groupId = String(event.group_id ?? "").trim();
+    const userId = String(event.user_id ?? "").trim();
     const flag = String(event.flag || "").trim();
     const subType = String(event.sub_type || "invite").trim() || "invite";
     if (!selfId || !groupId || !userId || !flag) return;
@@ -242,8 +244,8 @@ export function registerNotificationHandlers(
   }
 
   function shiftLatestFriendRequest(
-    selfId: number,
-    userId: number,
+    selfId: string,
+    userId: string,
   ): PendingFriendRequest | undefined {
     prunePendingRequests();
     for (let i = pendingFriendRequests.length - 1; i >= 0; i--) {
@@ -257,9 +259,9 @@ export function registerNotificationHandlers(
   }
 
   function shiftLatestGroupInvite(
-    selfId: number,
-    groupId: number,
-    userId?: number,
+    selfId: string,
+    groupId: string,
+    userId?: string,
   ): PendingGroupInvite | undefined {
     prunePendingRequests();
     for (let i = pendingGroupInvites.length - 1; i >= 0; i--) {
@@ -296,47 +298,53 @@ export function registerNotificationHandlers(
   function parseQuotedApprovalTarget(
     quotedText: string,
   ):
-    | { type: "friend_message"; userId: number }
-    | { type: "friend_request"; userId: number }
-    | { type: "group_invite"; groupId: number; userId?: number }
-    | { type: "group_ban"; groupId: number }
+    | { type: "friend_message"; userId: string }
+    | { type: "friend_request"; userId: string }
+    | { type: "group_invite"; groupId: string; userId?: string }
+    | { type: "group_ban"; groupId: string }
     | null {
     const text = String(quotedText || "");
     if (!text) return null;
 
+    // 文本里的 id 可能是 QQ 号,也可能是 openid
+    const ID_PATTERN = "([A-Za-z0-9_-]{4,64})";
+
     if (text.includes("[好友消息]")) {
       const userIdMatch =
-        text.match(/好友QQ[：:]\s*(\d+)/) ||
-        text.match(/QQ[：:]\s*(\d+)/);
-      const userId = Number(userIdMatch?.[1] || 0);
-      return userId > 0 ? { type: "friend_message", userId } : null;
+        text.match(new RegExp(`好友(?:QQ|ID)[：:]\\s*${ID_PATTERN}`)) ||
+        text.match(new RegExp(`(?:QQ|ID)[：:]\\s*${ID_PATTERN}`));
+      const userId = String(userIdMatch?.[1] ?? "").trim();
+      return userId ? { type: "friend_message", userId } : null;
     }
 
     if (text.includes("[好友申请]")) {
       const userIdMatch =
-        text.match(/好友QQ[：:]\s*(\d+)/) ||
-        text.match(/QQ[：:]\s*(\d+)/) ||
-        text.match(/\[好友申请\]\s*(\d+)/);
-      const userId = Number(userIdMatch?.[1] || 0);
-      return userId > 0 ? { type: "friend_request", userId } : null;
+        text.match(new RegExp(`好友(?:QQ|ID)[：:]\\s*${ID_PATTERN}`)) ||
+        text.match(new RegExp(`(?:QQ|ID)[：:]\\s*${ID_PATTERN}`)) ||
+        text.match(new RegExp(`\\[好友申请\\]\\s*${ID_PATTERN}`));
+      const userId = String(userIdMatch?.[1] ?? "").trim();
+      return userId ? { type: "friend_request", userId } : null;
     }
 
     if (text.includes("[群邀请]")) {
       const groupIdMatch =
-        text.match(/群号[：:]\s*(\d+)/) || text.match(/\[群邀请\][^\d]*(\d+)/);
-      const inviterIdMatch = text.match(/邀请人QQ[：:]\s*(\d+)/);
-      const groupId = Number(groupIdMatch?.[1] || 0);
-      const userId = Number(inviterIdMatch?.[1] || 0);
-      if (groupId <= 0) return null;
-      return userId > 0
+        text.match(new RegExp(`群号[：:]\\s*${ID_PATTERN}`)) ||
+        text.match(new RegExp(`\\[群邀请\\][^A-Za-z0-9_-]*${ID_PATTERN}`));
+      const inviterIdMatch = text.match(
+        new RegExp(`邀请人(?:QQ|ID)[：:]\\s*${ID_PATTERN}`),
+      );
+      const groupId = String(groupIdMatch?.[1] ?? "").trim();
+      const userId = String(inviterIdMatch?.[1] ?? "").trim();
+      if (!groupId) return null;
+      return userId
         ? { type: "group_invite", groupId, userId }
         : { type: "group_invite", groupId };
     }
 
     if (text.includes("[Bot被禁言]")) {
-      const groupIdMatch = text.match(/群号[：:]\s*(\d+)/);
-      const groupId = Number(groupIdMatch?.[1] || 0);
-      return groupId > 0 ? { type: "group_ban", groupId } : null;
+      const groupIdMatch = text.match(new RegExp(`群号[：:]\\s*${ID_PATTERN}`));
+      const groupId = String(groupIdMatch?.[1] ?? "").trim();
+      return groupId ? { type: "group_ban", groupId } : null;
     }
 
     return null;
@@ -363,9 +371,9 @@ export function registerNotificationHandlers(
   ): Promise<void> {
     if (!getConfig().notifyGroupInvite) return;
 
-    const selfId = Number(event.self_id || 0);
-    const groupId = Number(event.group_id || 0);
-    const userId = Number(event.user_id || 0);
+    const selfId = String(event.self_id ?? "").trim();
+    const groupId = String(event.group_id ?? "").trim();
+    const userId = String(event.user_id ?? "").trim();
     const flag = String(event.flag || "").trim();
     if (!selfId || !groupId || !userId || !flag) return;
 
@@ -380,7 +388,7 @@ export function registerNotificationHandlers(
       lines: [
         "[群邀请]",
         `群号：${groupId}`,
-        `邀请人QQ：${userId}`,
+        `邀请人QQ：${userId}`,  // 可能是 openid,保留原值便于引用回复
         `验证消息：${comment}`,
         "备注：引用该消息回复「同意」或「拒绝」",
       ],
@@ -388,15 +396,15 @@ export function registerNotificationHandlers(
   }
 
   async function notifyGroupBan(event: NoticeEvent): Promise<void> {
-    const selfId = Number(event.self_id || 0);
-    const groupId = Number(event.group_id || 0);
-    const userId = Number(event.user_id || 0);
+    const selfId = String(event.self_id ?? "").trim();
+    const groupId = String(event.group_id ?? "").trim();
+    const userId = String(event.user_id ?? "").trim();
     const rawBan = event.raw as { action_type?: string; duration?: number } | undefined;
     const duration = Number(rawBan?.duration || 0);
     if (!selfId || !groupId) return;
     if (userId !== selfId) return;
 
-    const operatorId = Number(event.operator_id || 0);
+    const operatorId = String(event.operator_id ?? "").trim();
     const isUnban = rawBan?.action_type === "lift_ban";
     if (isUnban) {
       if (!getConfig().notifyGroupUnban) return;
@@ -424,22 +432,21 @@ export function registerNotificationHandlers(
   ): Promise<void> {
     if (!getConfig().notifyGroupKick) return;
 
-    const selfId = Number(event.self_id || 0);
-    const groupId = Number(event.group_id || 0);
-    const userId = Number(event.user_id || 0);
+    const selfId = String(event.self_id ?? "").trim();
+    const groupId = String(event.group_id ?? "").trim();
+    const userId = String(event.user_id ?? "").trim();
     const rawKick = event.raw as { action_type?: string } | undefined;
     const leaveType = String(rawKick?.action_type || "").trim();
     if (!selfId || !groupId) return;
     if (userId !== selfId) return;
     if (leaveType !== "kick" && leaveType !== "kick_me") return;
 
-    const operatorId = Number(event.operator_id || 0);
+    const operatorId = String(event.operator_id ?? "").trim();
     const eventKey = `group-kick:${selfId}:${groupId}:${operatorId}:${leaveType}:${Number(event.time || 0)}`;
     if (!markEventOnce(eventKey)) return;
 
     await sendNotify(event.bot, {
-      avatarUrl:
-        operatorId > 0 ? getAvatarUrl(operatorId) : getGroupAvatarUrl(groupId),
+      avatarUrl: operatorId ? getAvatarUrl(operatorId) : getGroupAvatarUrl(groupId),
       lines: ["[Bot被踢]", `群号：${groupId}`, `操作者QQ：${operatorId}`],
     });
   }
@@ -520,7 +527,7 @@ export function registerNotificationHandlers(
     }
     const text = (ctx.text(event) || "").trim();
 
-    const selfId = Number(event.self_id || 0);
+    const selfId = String(event.self_id ?? "").trim();
     const bot = event.bot;
     if (!bot) {
       await event.reply("Bot不可用", true);

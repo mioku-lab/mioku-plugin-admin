@@ -20,7 +20,7 @@ export interface SavedPromptImage {
   size: number;
 }
 
-export function getGroupPromptImageDir(groupId: number): string {
+export function getGroupPromptImageDir(groupId: string): string {
   return path.join(
     getPluginDataDir("admin"),
     String(groupId),
@@ -28,13 +28,13 @@ export function getGroupPromptImageDir(groupId: number): string {
   );
 }
 
-export function ensureGroupPromptImageDir(groupId: number): string {
+export function ensureGroupPromptImageDir(groupId: string): string {
   const dir = getGroupPromptImageDir(groupId);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   return dir;
 }
 
-export function getGroupPromptImagePath(groupId: number, filename: string): string {
+export function getGroupPromptImagePath(groupId: string, filename: string): string {
   return path.join(getGroupPromptImageDir(groupId), filename);
 }
 
@@ -57,7 +57,7 @@ function generateFilename(ext: string): string {
 }
 
 export async function saveRemoteImageAsPrompt(
-  groupId: number,
+  groupId: string,
   sourceUrl: string,
 ): Promise<SavedPromptImage | null> {
   const trimmed = String(sourceUrl || "").trim();
@@ -95,7 +95,7 @@ export async function saveRemoteImageAsPrompt(
 }
 
 async function copyLocalFileAsPrompt(
-  groupId: number,
+  groupId: string,
   filePath: string,
 ): Promise<SavedPromptImage | null> {
   try {
@@ -171,7 +171,7 @@ function downloadToFile(url: string, savePath: string): Promise<number> {
 }
 
 export async function deletePromptImage(
-  groupId: number,
+  groupId: string,
   filename: string,
 ): Promise<void> {
   if (!filename) return;
@@ -182,7 +182,7 @@ export async function deletePromptImage(
 }
 
 export async function pruneGroupPromptImages(
-  groupId: number,
+  groupId: string,
   keep: readonly string[],
 ): Promise<void> {
   const dir = getGroupPromptImageDir(groupId);

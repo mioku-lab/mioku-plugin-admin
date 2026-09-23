@@ -37,9 +37,9 @@ const VERIFY_MODE_LABELS: Record<string, string> = {
 
 type VerifyContext = CommandExecutionContext & {
   bot: Bot;
-  groupIdNum: number;
+  groupIdNum: string;
   groupName: string;
-  selfId: number;
+  selfId: string;
 };
 
 async function extractQuoteImageUrls(event: MessageEvent): Promise<string[]> {
@@ -61,22 +61,21 @@ export function registerVerifyCommands(options: VerifyCommandOptions) {
   ) => {
     ctx.command({
       ...def,
-      prefixes: false,
       handler: async (c) => {
         const event = c.event;
         if (event.user_id === event.self_id) return;
         if (event.message_type !== "group") return;
         const bot = event.bot;
         if (!bot) return;
-        const groupIdNum = event.group_id ? Number(event.group_id) : 0;
+        const groupIdNum = String(event.group_id ?? "").trim();
         if (!groupIdNum) return;
         try {
           await run({
             ...c,
             bot,
             groupIdNum,
-            groupName: String(event?.group?.group_name || "").trim() || String(groupIdNum),
-            selfId: Number(event.self_id),
+            groupName: String(event?.group?.group_name || "").trim() || groupIdNum,
+            selfId: String(event.self_id ?? "").trim(),
           });
         } catch (err) {
           ctx.logger.error(`[admin verify] 未捕获异常: ${String(err)}`);
@@ -94,7 +93,7 @@ export function registerVerifyCommands(options: VerifyCommandOptions) {
 
   register(
     {
-      name: "/开启验证",
+      name: "开启验证",
       match: /^[/#]开启验证$/,
       permission: "admin",
       description: "开启本群入群验证",
@@ -128,7 +127,7 @@ export function registerVerifyCommands(options: VerifyCommandOptions) {
 
   register(
     {
-      name: "/关闭验证",
+      name: "关闭验证",
       match: /^[/#]关闭验证$/,
       permission: "admin",
       description: "关闭本群入群验证",
@@ -151,11 +150,11 @@ export function registerVerifyCommands(options: VerifyCommandOptions) {
 
   register(
     {
-      name: "/切换验证模式",
+      name: "切换验证模式",
       match: /^[/#]切换验证模式(?:\s|$)/,
       permission: "admin",
       description: "切换验证模式：回应/数字/手性碳",
-      usage: "/切换验证模式 回应",
+      usage: ".切换验证模式 回应",
     },
     async (c) => {
       const { ctx, event, groupIdNum, body } = c;
@@ -183,11 +182,11 @@ export function registerVerifyCommands(options: VerifyCommandOptions) {
 
   register(
     {
-      name: "/绕过验证",
+      name: "绕过验证",
       match: /^[/#]绕过验证(?:\s|$)/,
       permission: "admin",
       description: "绕过指定新成员的验证直接欢迎",
-      usage: "/绕过验证 @新成员",
+      usage: ".绕过验证 @新成员",
     },
     async (c) => {
       const { ctx, event, groupIdNum, groupName, selfId } = c;
@@ -224,11 +223,11 @@ export function registerVerifyCommands(options: VerifyCommandOptions) {
 
   register(
     {
-      name: "/重新验证",
+      name: "重新验证",
       match: /^[/#]重新验证(?:\s|$)/,
       permission: "admin",
       description: "让指定成员重新进行入群验证",
-      usage: "/重新验证 @成员",
+      usage: ".重新验证 @成员",
     },
     async (c) => {
       const { ctx, event, bot, groupIdNum, groupName, selfId } = c;
@@ -282,11 +281,11 @@ export function registerVerifyCommands(options: VerifyCommandOptions) {
 
   register(
     {
-      name: "/入群提示",
+      name: "入群提示",
       match: /^[/#]入群提示(?:\s|$)/,
       permission: "admin",
       description: "设置本群自定义入群提示，可附带文字+图片",
-      usage: "/入群提示 xxx；/入群提示 关闭",
+      usage: ".入群提示 xxx；/入群提示 关闭",
     },
     async (c) => {
       const { ctx, event, groupIdNum, body } = c;
