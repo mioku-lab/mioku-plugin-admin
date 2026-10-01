@@ -67,7 +67,7 @@ async function checkDangerousTargetPermission(
 const groupAdminSkill: AISkill = {
   name: "admin_group",
   description:
-    "群管理统一入口。action 决定具体行为：管理成员（踢/禁言/解禁/设管理/设头衔）或管理群（全体禁言/改群名/改Bot群名片/改群头像/撤回消息）。",
+    "群管理统一入口。action 决定具体行为：管理成员（踢/禁言/解禁/设管理/设头衔/改成员群名片）或管理群（全体禁言/改群名/改Bot自己群名片/改群头像/撤回消息）。",
   permission: "admin",
   tools: [
     {
@@ -79,7 +79,7 @@ const groupAdminSkill: AISkill = {
           action: {
             type: "string",
             description:
-              "要执行的动作：踢人，禁言，解禁，设置/取消管理，设置头衔",
+              "要执行的动作：踢人，禁言，解禁，设置/取消管理，设置头衔，改群名片",
             enum: [
               "kick",
               "mute",
@@ -88,6 +88,7 @@ const groupAdminSkill: AISkill = {
               "unset_admin",
               "set_title",
               "set_self_title",
+              "set_card",
             ],
           },
           user_id: {
@@ -101,6 +102,10 @@ const groupAdminSkill: AISkill = {
           title: {
             type: "string",
             description: "头衔内容，仅 set_title / set_self_title 需要",
+          },
+          card: {
+            type: "string",
+            description: "新的群名片，仅 set_card 需要",
           },
         },
         required: ["action"],
@@ -168,6 +173,15 @@ const groupAdminSkill: AISkill = {
               await bot.setMemberTitle(groupId, userId, title);
               return { success: true, message: `已将你的头衔设为 "${title}"` };
             }
+            case "set_card": {
+              const userId = Number((args as { user_id?: unknown })?.user_id);
+              const card = String((args as { card?: unknown })?.card ?? "").trim();
+              if (!userId || !card) {
+                return { error: "set_card 需要提供 user_id 和 card" };
+              }
+              await bot.setMemberCard(groupId, userId, card);
+              return { success: true, message: `已将 ${userId} 的群名片设为 "${card}"` };
+            }
             default:
               return { error: `未知的 action: ${action}` };
           }
@@ -180,7 +194,7 @@ const groupAdminSkill: AISkill = {
     {
       name: "manage_group",
       description:
-        "管理群本身或批量撤回消息：开启/关闭全体禁言、改群名、改Bot在群里的名片、改群头像、撤回一条或多条消息",
+        "管理群本身或批量撤回消息：开启/关闭全体禁言、改群名、改Bot自己在群里的名片（改他人名片请用 manage_member 的 set_card）、改群头像、撤回一条或多条消息",
       parameters: {
         type: "object",
         properties: {
@@ -202,7 +216,7 @@ const groupAdminSkill: AISkill = {
           },
           card: {
             type: "string",
-            description: "新的Bot群名片，仅 set_self_card 需要",
+            description: "Bot自己新的群名片，仅 set_self_card 需要",
           },
           message_id: {
             type: "number",

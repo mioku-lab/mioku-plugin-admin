@@ -369,19 +369,19 @@ export function registerGroupAdminCommands(ctx: MiokuContext) {
 
   register(
     {
-      name: "改群名片",
-      match: /^\/??改群名片(?:\s|$)/,
+      name: "改个人群名片",
+      match: /^\/??改个人群名片(?:\s|$)/,
       permission: "admin",
-      description: "修改Bot在群里的名片",
+      description: "修改Bot自己在群里的名片",
     },
     async (c) => {
       const { ctx, event, bot, groupIdNum, body } = c;
-      const card = body.replace(/^\/??改群名片\s*/, "").trim();
+      const card = body.replace(/^\/??改个人群名片\s*/, "").trim();
       if (!card) {
         await replyAdminErrorNotice({
           ctx,
           event,
-          instruction: "用户希望修改你在群里的昵称，但是没有指定名称。",
+          instruction: "用户希望修改你在群里的名片，但是没有指定名称。",
           fallbackMessage: "名片内容呢～",
         });
         return;
@@ -393,7 +393,7 @@ export function registerGroupAdminCommands(ctx: MiokuContext) {
         await replyAdminErrorNotice({
           ctx,
           event,
-          instruction: `改群名片执行失败，${String(err)}`,
+          instruction: `改个人群名片执行失败，${String(err)}`,
           fallbackMessage: `出错了，笨蛋～ ${String(err)}`,
           error: err,
         });
@@ -403,14 +403,74 @@ export function registerGroupAdminCommands(ctx: MiokuContext) {
 
   register(
     {
-      name: "改群昵称",
-      match: /^\/?改群昵称/,
+      name: "改群名片",
+      match: /^\/??改群名片(?:\s|$)/,
       permission: "admin",
-      description: "修改群聊名称",
+      description: "修改群成员的群名片",
+      usage: ".改群名片 <用户ID或@人> 名片",
     },
     async (c) => {
       const { ctx, event, bot, groupIdNum, body } = c;
-      const groupName = body.replace(/^\/?改群昵称\s*/, "").trim();
+      const rest = body.replace(/^\/??改群名片\s*/, "").trim();
+      const atUser = getAtUserId(event.message);
+      let targetUser: string | undefined = atUser;
+      let card: string;
+
+      if (atUser) {
+        card = rest.replace(/@[A-Za-z0-9_-]{4,64}\s*/, "").trim();
+      } else {
+        const parts = rest.split(/\s+/);
+        if (parts.length < 2) {
+          await replyAdminErrorNotice({
+            ctx,
+            event,
+            instruction:
+              "用户在让你修改别人的群名片时缺少参数，请提示用户命令后需要加用户ID或@人",
+            fallbackMessage: "想改谁的名片呀～",
+          });
+          return;
+        }
+        targetUser = String(parts[0]).trim();
+        card = parts.slice(1).join(" ");
+      }
+
+      if (!targetUser || !card) {
+        await replyAdminErrorNotice({
+          ctx,
+          event,
+          instruction:
+            "用户触发改群名片时参数无效，请提示用户命令后需要加用户ID或@人",
+          fallbackMessage: "想改谁的名片呀～",
+        });
+        return;
+      }
+
+      try {
+        await bot.setMemberCard(groupIdNum, targetUser, card);
+        await event.reply("done");
+      } catch (err) {
+        await replyAdminErrorNotice({
+          ctx,
+          event,
+          instruction: `改群名片执行失败： ${String(err)}，请简要说明失败并建议稍后重试`,
+          fallbackMessage: `出错了，笨蛋～ ${String(err)}`,
+          error: err,
+        });
+      }
+    },
+  );
+
+  register(
+    {
+      name: "改群名",
+      match: /^\/??改群名(?:\s|$)/,
+      permission: "admin",
+      description: "修改群聊名称",
+      usage: ".改群名 新群名",
+    },
+    async (c) => {
+      const { ctx, event, bot, groupIdNum, body } = c;
+      const groupName = body.replace(/^\/??改群名\s*/, "").trim();
       if (!groupName) {
         await replyAdminErrorNotice({
           ctx,
@@ -428,7 +488,7 @@ export function registerGroupAdminCommands(ctx: MiokuContext) {
         await replyAdminErrorNotice({
           ctx,
           event,
-          instruction: `改群昵称执行失败${String(err)}`,
+          instruction: `改群名执行失败${String(err)}`,
           fallbackMessage: `出错了，笨蛋～ ${String(err)}`,
           error: err,
         });
