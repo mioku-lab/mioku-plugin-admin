@@ -1,5 +1,13 @@
-import type { Bot, CommandDefinition, MessageEvent, MessageInput, MessageTarget, MiokuContext, MessageSegment } from "mioku";
-import {createGroupRef} from "mioku";
+import type {
+  Bot,
+  CommandDefinition,
+  MessageEvent,
+  MessageInput,
+  MessageTarget,
+  MiokuContext,
+  MessageSegment,
+} from "mioku";
+import { createGroupRef } from "mioku";
 import { extractImageUrl } from "../config";
 import { replyAdminErrorNotice } from "./notice";
 
@@ -10,7 +18,10 @@ function parseProfileSex(value: string): 0 | 1 | 2 {
   return 0;
 }
 
-function toSendSegment(ctx: MiokuContext, seg: MessageSegment): MessageSegment | null {
+function toSendSegment(
+  ctx: MiokuContext,
+  seg: MessageSegment,
+): MessageSegment | null {
   const data = seg.data as Record<string, unknown>;
   switch (seg.type) {
     case "text": {
@@ -119,10 +130,12 @@ async function sendForwardByEvent(options: {
   const { bot, event, messages } = options;
   const chunkSize = 50;
 
-  const nodes = (messages as Array<{
-    type?: string;
-    data?: { user_id?: string; nickname?: string; content?: unknown };
-  }>)
+  const nodes = (
+    messages as Array<{
+      type?: string;
+      data?: { user_id?: string; nickname?: string; content?: unknown };
+    }>
+  )
     .map((node) => ({
       user_id: String(node?.data?.user_id ?? event.user_id ?? ""),
       nickname:
@@ -153,6 +166,7 @@ export function registerPersonalCommands(ctx: MiokuContext) {
   const register = (command: CommandDefinition) => {
     const { handler, ...rest } = command;
     ctx.command({
+      prefixes: ["", ".", "/"],
       ...rest,
       handler: async (c) => {
         if (c.event.user_id === c.event.self_id) return;
@@ -346,7 +360,7 @@ export function registerPersonalCommands(ctx: MiokuContext) {
     handler: async ({ event, body }) => {
       const bot = event.bot;
       if (!bot) return;
-      const matched = body.match(/^\/发好友\s*(\d+)\s*([\s\S]*)$/);
+      const matched = body.match(/^发好友\s*(\d+)\s*([\s\S]*)$/);
       if (!matched) {
         await replyAdminErrorNotice({
           ctx,
@@ -362,7 +376,7 @@ export function registerPersonalCommands(ctx: MiokuContext) {
       const payload = buildForwardPayloadAfterCommand(
         ctx,
         event?.message || [],
-        /^\/发好友\s*\d+\s*/,
+        /^[/#.]?发好友\s*\d+\s*/,
         fallbackText,
       );
       if (!targetUser || !payload.length) {
@@ -376,7 +390,10 @@ export function registerPersonalCommands(ctx: MiokuContext) {
         return;
       }
       try {
-        await bot.sendMessage({ type: "private", user_id: targetUser}, payload);
+        await bot.sendMessage(
+          { type: "private", user_id: targetUser },
+          payload,
+        );
         await event.reply("done");
       } catch (err) {
         await replyAdminErrorNotice({
@@ -399,7 +416,7 @@ export function registerPersonalCommands(ctx: MiokuContext) {
     handler: async ({ event, body }) => {
       const bot = event.bot;
       if (!bot) return;
-      const matched = body.match(/^\/发群聊\s*(\d+)\s*([\s\S]*)$/);
+      const matched = body.match(/^发群聊\s*(\d+)\s*([\s\S]*)$/);
       if (!matched) {
         await replyAdminErrorNotice({
           ctx,
@@ -415,7 +432,7 @@ export function registerPersonalCommands(ctx: MiokuContext) {
       const payload = buildForwardPayloadAfterCommand(
         ctx,
         event?.message || [],
-        /^\/发群聊\s*\d+\s*/,
+        /^[/#.]?发群聊\s*\d+\s*/,
         fallbackText,
       );
       if (!targetGroup || !payload.length) {
@@ -429,7 +446,10 @@ export function registerPersonalCommands(ctx: MiokuContext) {
         return;
       }
       try {
-        await bot.sendMessage({ type: "group", group_id: targetGroup}, payload);
+        await bot.sendMessage(
+          { type: "group", group_id: targetGroup },
+          payload,
+        );
         await event.reply("done");
       } catch (err) {
         await replyAdminErrorNotice({

@@ -49,7 +49,9 @@ async function extractQuoteImageUrls(event: MessageEvent): Promise<string[]> {
   if (typeof eventAny.getQuoteMsg !== "function") return [];
   const quoteMsg = await eventAny.getQuoteMsg().catch(() => null);
   if (!quoteMsg || !Array.isArray(quoteMsg.message)) return [];
-  return extractImageUrls(quoteMsg.message as Parameters<typeof extractImageUrls>[0]);
+  return extractImageUrls(
+    quoteMsg.message as Parameters<typeof extractImageUrls>[0],
+  );
 }
 
 export function registerVerifyCommands(options: VerifyCommandOptions) {
@@ -60,6 +62,7 @@ export function registerVerifyCommands(options: VerifyCommandOptions) {
     run: (c: VerifyContext) => Promise<void>,
   ) => {
     ctx.command({
+      prefixes: ["", ".", "/", "#"],
       ...def,
       handler: async (c) => {
         const event = c.event;
@@ -74,7 +77,8 @@ export function registerVerifyCommands(options: VerifyCommandOptions) {
             ...c,
             bot,
             groupIdNum,
-            groupName: String(event?.group?.group_name || "").trim() || groupIdNum,
+            groupName:
+              String(event?.group?.group_name || "").trim() || groupIdNum,
             selfId: String(event.self_id ?? "").trim(),
           });
         } catch (err) {
@@ -94,7 +98,7 @@ export function registerVerifyCommands(options: VerifyCommandOptions) {
   register(
     {
       name: "开启验证",
-      match: /^[/#]开启验证$/,
+      match: /^开启验证$/,
       permission: "admin",
       description: "开启本群入群验证",
     },
@@ -128,7 +132,7 @@ export function registerVerifyCommands(options: VerifyCommandOptions) {
   register(
     {
       name: "关闭验证",
-      match: /^[/#]关闭验证$/,
+      match: /^关闭验证$/,
       permission: "admin",
       description: "关闭本群入群验证",
     },
@@ -151,14 +155,14 @@ export function registerVerifyCommands(options: VerifyCommandOptions) {
   register(
     {
       name: "切换验证模式",
-      match: /^[/#]切换验证模式(?:\s|$)/,
+      match: /^切换验证模式(?:\s|$)/,
       permission: "admin",
       description: "切换验证模式：回应/数字/手性碳",
       usage: ".切换验证模式 回应",
     },
     async (c) => {
       const { ctx, event, groupIdNum, body } = c;
-      const arg = body.replace(/^[/#]切换验证模式\s*/, "").trim();
+      const arg = body.replace(/^切换验证模式\s*/, "").trim();
       const mode = normalizeVerifyMode(arg);
       if (!arg) {
         await replyAdminErrorNotice({
@@ -183,7 +187,7 @@ export function registerVerifyCommands(options: VerifyCommandOptions) {
   register(
     {
       name: "绕过验证",
-      match: /^[/#]绕过验证(?:\s|$)/,
+      match: /^绕过验证(?:\s|$)/,
       permission: "admin",
       description: "绕过指定新成员的验证直接欢迎",
       usage: ".绕过验证 @新成员",
@@ -224,7 +228,7 @@ export function registerVerifyCommands(options: VerifyCommandOptions) {
   register(
     {
       name: "重新验证",
-      match: /^[/#]重新验证(?:\s|$)/,
+      match: /^重新验证(?:\s|$)/,
       permission: "admin",
       description: "让指定成员重新进行入群验证",
       usage: ".重新验证 @成员",
@@ -282,14 +286,14 @@ export function registerVerifyCommands(options: VerifyCommandOptions) {
   register(
     {
       name: "入群提示",
-      match: /^[/#]入群提示(?:\s|$)/,
+      match: /^入群提示(?:\s|$)/,
       permission: "admin",
       description: "设置本群自定义入群提示，可附带文字+图片",
       usage: ".入群提示 xxx；/入群提示 关闭",
     },
     async (c) => {
       const { ctx, event, groupIdNum, body } = c;
-      const rawArg = body.replace(/^[/#]入群提示\s*/, "").trim();
+      const rawArg = body.replace(/^入群提示\s*/, "").trim();
       const current = getVerifyConfig();
       const groupCfg = getGroupVerifyConfig(current, groupIdNum);
       const directImageUrls = extractImageUrls(event.message);
@@ -381,9 +385,10 @@ export function registerVerifyCommands(options: VerifyCommandOptions) {
         promptImage: nextImage,
       });
       await setVerifyConfig(next);
-      await pruneGroupPromptImages(groupIdNum, nextImage ? [nextImage] : []).catch(
-        () => {},
-      );
+      await pruneGroupPromptImages(
+        groupIdNum,
+        nextImage ? [nextImage] : [],
+      ).catch(() => {});
 
       const lines = ["已更新本群自定义入群提示"];
       if (rawArg) lines.push(`文字：${nextPrompt}`);
