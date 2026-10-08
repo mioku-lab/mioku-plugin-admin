@@ -285,7 +285,7 @@ export function registerPersonalCommands(ctx: MiokuContext) {
 
   register({
     name: "删好友",
-    match: /^\/?删好友(?:\s|$)/,
+    match: /^\/?删好友(?![\u4e00-\u9fa5A-Za-z0-9_])/,
     permission: "master",
     description: "删除好友",
     usage: ".删好友 qq号",
@@ -319,7 +319,7 @@ export function registerPersonalCommands(ctx: MiokuContext) {
 
   register({
     name: "退群",
-    match: /^\/?退群(?:\s|$)/,
+    match: /^\/?退群(?![\u4e00-\u9fa5A-Za-z0-9_])/,
     permission: "master",
     description: "退出群聊",
     usage: ".退群 群号",
@@ -353,7 +353,7 @@ export function registerPersonalCommands(ctx: MiokuContext) {
 
   register({
     name: "发好友",
-    match: /^\/?发好友(?:\s|$)/,
+    match: /^\/?发好友(?![\u4e00-\u9fa5A-Za-z0-9_])/,
     permission: "master",
     description: "给好友发送私聊消息",
     usage: ".发好友 qq号 内容",
@@ -409,7 +409,7 @@ export function registerPersonalCommands(ctx: MiokuContext) {
 
   register({
     name: "发群聊",
-    match: /^\/?发群聊(?:\s|$)/,
+    match: /^\/?发群聊(?![\u4e00-\u9fa5A-Za-z0-9_])/,
     permission: "master",
     description: "给群聊发送消息",
     usage: ".发群聊 群号 内容",

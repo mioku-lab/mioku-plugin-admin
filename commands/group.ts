@@ -117,7 +117,7 @@ export function registerGroupAdminCommands(ctx: MiokuContext) {
   register(
     {
       name: "改头衔",
-      match: /^\/??改头衔(?:\s|$)/,
+      match: /^\/??改头衔(?![\u4e00-\u9fa5A-Za-z0-9_])/,
       permission: "admin",
       description: "设置群成员专属头衔",
       usage: ".改头衔 <用户ID或@人> 头衔",
@@ -176,7 +176,7 @@ export function registerGroupAdminCommands(ctx: MiokuContext) {
   register(
     {
       name: "踢",
-      match: /^\/??踢(?:\s|$)/,
+      match: /^\/??踢(?![\u4e00-\u9fa5A-Za-z0-9_])/,
       permission: "admin",
       description: "踢出群成员",
     },
@@ -212,7 +212,7 @@ export function registerGroupAdminCommands(ctx: MiokuContext) {
   register(
     {
       name: "禁言",
-      match: /^\/??禁(?:言)?(?:\s|$)/,
+      match: /^\/??禁(?:言)?(?![\u4e00-\u9fa5A-Za-z0-9_])/,
       permission: "admin",
       description: "禁言群成员（支持分钟/小时/天）",
       usage: ".禁言 @人 10分钟",
@@ -252,7 +252,7 @@ export function registerGroupAdminCommands(ctx: MiokuContext) {
   register(
     {
       name: "解禁",
-      match: /^\/??解(?:禁)?(?:\s|$)/,
+      match: /^\/??解(?:禁)?(?![\u4e00-\u9fa5A-Za-z0-9_])/,
       permission: "admin",
       description: "解除群成员禁言",
     },
@@ -287,7 +287,7 @@ export function registerGroupAdminCommands(ctx: MiokuContext) {
   register(
     {
       name: "设管理",
-      match: /^\/??设管理(?:\s|$)/,
+      match: /^\/??设管理(?![\u4e00-\u9fa5A-Za-z0-9_])/,
       permission: "admin",
       description: "设置群管理员",
     },
@@ -370,7 +370,7 @@ export function registerGroupAdminCommands(ctx: MiokuContext) {
   register(
     {
       name: "改个人群名片",
-      match: /^\/??改个人群名片(?:\s|$)/,
+      match: /^\/??改个人群名片(?![\u4e00-\u9fa5A-Za-z0-9_])/,
       permission: "admin",
       description: "修改Bot自己在群里的名片",
     },
@@ -404,7 +404,7 @@ export function registerGroupAdminCommands(ctx: MiokuContext) {
   register(
     {
       name: "改群名片",
-      match: /^\/??改群名片(?:\s|$)/,
+      match: /^\/??改群名片(?![\u4e00-\u9fa5A-Za-z0-9_])/,
       permission: "admin",
       description: "修改群成员的群名片",
       usage: ".改群名片 <用户ID或@人> 名片",
@@ -463,7 +463,7 @@ export function registerGroupAdminCommands(ctx: MiokuContext) {
   register(
     {
       name: "改群名",
-      match: /^\/??改群名(?:\s|$)/,
+      match: /^\/??改群名(?![\u4e00-\u9fa5A-Za-z0-9_])/,
       permission: "admin",
       description: "修改群聊名称",
       usage: ".改群名 新群名",
@@ -534,7 +534,7 @@ export function registerGroupAdminCommands(ctx: MiokuContext) {
   register(
     {
       name: "撤回",
-      match: /^\/??撤回(?:\s|$)/,
+      match: /^\/??撤回(?![\u4e00-\u9fa5A-Za-z0-9_])/,
       permission: "admin",
       description: "撤回别人的消息",
       usage: "引用一条消息后输入 /撤回",

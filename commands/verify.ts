@@ -155,7 +155,7 @@ export function registerVerifyCommands(options: VerifyCommandOptions) {
   register(
     {
       name: "切换验证模式",
-      match: /^切换验证模式(?:\s|$)/,
+      match: /^切换验证模式(?![\u4e00-\u9fa5A-Za-z0-9_])/,
       permission: "admin",
       description: "切换验证模式：回应/数字/手性碳",
       usage: ".切换验证模式 回应",
@@ -187,7 +187,7 @@ export function registerVerifyCommands(options: VerifyCommandOptions) {
   register(
     {
       name: "绕过验证",
-      match: /^绕过验证(?:\s|$)/,
+      match: /^绕过验证(?![\u4e00-\u9fa5A-Za-z0-9_])/,
       permission: "admin",
       description: "绕过指定新成员的验证直接欢迎",
       usage: ".绕过验证 @新成员",
@@ -228,7 +228,7 @@ export function registerVerifyCommands(options: VerifyCommandOptions) {
   register(
     {
       name: "重新验证",
-      match: /^重新验证(?:\s|$)/,
+      match: /^重新验证(?![\u4e00-\u9fa5A-Za-z0-9_])/,
       permission: "admin",
       description: "让指定成员重新进行入群验证",
       usage: ".重新验证 @成员",
@@ -286,7 +286,7 @@ export function registerVerifyCommands(options: VerifyCommandOptions) {
   register(
     {
       name: "入群提示",
-      match: /^入群提示(?:\s|$)/,
+      match: /^入群提示(?![\u4e00-\u9fa5A-Za-z0-9_])/,
       permission: "admin",
       description: "设置本群自定义入群提示，可附带文字+图片",
       usage: ".入群提示 xxx；/入群提示 关闭",
